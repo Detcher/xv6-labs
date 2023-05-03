@@ -3,9 +3,7 @@
  * @time: 2023/5/3 10:31
  * @description: lab1.4
 */
-/**
- * TEST Test
-*/
+
 #include "kernel/types.h"
 #include "user/user.h"
 #include "kernel/stat.h"
