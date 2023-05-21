@@ -1,0 +1,6 @@
+void usertrap(void) {...}
+0x7, the system call number(SYS_exec)
+supervisor mode
+lw	a3,0(zero) # 0 <_entry-0x80000000>, a3
+based on figure 3-3, adr 0 isn't mapped in the kernel adr space, thus couldn't find in the specific page table; while the value in scause exactly means "Load page fault".
+initcode, 1

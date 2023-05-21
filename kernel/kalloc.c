@@ -80,3 +80,20 @@ kalloc(void)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
 }
+
+// 4sysinfo
+void
+calfreemm(uint64 *freemem)
+{
+  *freemem = 0; // couldn't expect the passed-value being initialized.
+  struct run *r;
+
+  acquire(&kmem.lock);
+  r = kmem.freelist;
+
+  while(r) {
+    r = r->next;
+    *freemem += PGSIZE;
+  }
+  release(&kmem.lock);
+}

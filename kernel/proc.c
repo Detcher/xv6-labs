@@ -310,6 +310,8 @@ fork(void)
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 
+  np->trace_mask = p->trace_mask;
+
   pid = np->pid;
 
   release(&np->lock);
@@ -680,4 +682,26 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+// 4sysinfo
+void
+calbusyproc(uint64 *p_nproc)
+{
+  *p_nproc = 0; // couldn't expect the passed-value being initialized.
+  
+  for( int i = 0; i < NPROC; i++ ) {
+    if( proc[i].state != UNUSED ) {
+      // NOTICED: "*p_nproc++;" is wrong
+      (*p_nproc)++;
+    }
+  }
+  /* Or you can, ...
+  struct proc *p;
+  for( p = proc; p < &proc[NPROC]; p++ ) {
+    if( p->state != UNUSED ) {
+      (*p_nproc)++;
+    }
+  }
+  */
 }

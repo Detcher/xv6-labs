@@ -1,5 +1,6 @@
 #include "types.h"
 #include "riscv.h"
+#include "sysinfo.h"
 #include "defs.h"
 #include "param.h"
 #include "memlayout.h"
@@ -90,4 +91,26 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+uint64
+sys_trace(void)
+{
+  struct proc *p = myproc();
+  argint( 0, &(p->trace_mask) );
+
+  return (p->trace_mask == -1) ? -1 : 0;
+}
+
+uint64
+sys_sysinfo(void)
+{
+  uint64 usr_info;
+  argaddr( 0, &usr_info );
+
+  struct sysinfo kernel_info;
+  calfreemm(&kernel_info.freemem);
+  calbusyproc(&kernel_info.nproc);
+
+  return copyout( myproc()->pagetable, usr_info, (char *)&kernel_info, sizeof(kernel_info) );
 }
