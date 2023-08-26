@@ -92,7 +92,7 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
     pte_t *pte = &pagetable[PX(level, va)];
     if(*pte & PTE_V) {
       pagetable = (pagetable_t)PTE2PA(*pte);
-    } else {
+    } else { // D: why "pde_t*" here? Shouldn't PDE ahead of PTE?
       if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
         return 0;
       memset(pagetable, 0, PGSIZE);
@@ -147,7 +147,7 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 
   if(size == 0)
     panic("mappages: size");
-  
+  // D: why using PGROUNDDOWN here?
   a = PGROUNDDOWN(va);
   last = PGROUNDDOWN(va + size - 1);
   for(;;){
@@ -234,7 +234,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
   oldsz = PGROUNDUP(oldsz);
   for(a = oldsz; a < newsz; a += PGSIZE){
     mem = kalloc();
-    if(mem == 0){
+    if(mem == 0){ // D: Rollback
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
@@ -327,7 +327,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   }
   return 0;
 
- err:
+ err: // D: Rollback
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
 }

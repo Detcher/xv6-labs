@@ -75,7 +75,8 @@ kalloc(void)
   if(r)
     kmem.freelist = r->next;
   release(&kmem.lock);
-
+  // D: How about just "memset(r, 5, PGSIZE);"? AND
+  // why junking again, given "kfree" has junked once?
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
