@@ -202,6 +202,24 @@ proc_pagetable(struct proc *p)
     return 0;
   }
 
+  struct usyscall *foo;
+  if( (foo = (struct usyscall *)kalloc()) == 0 ) {
+      freeproc(p);
+      release(&p->lock);
+      return 0;
+  }
+  foo->pid = p->pid;
+
+  // D: map the USYSCALL.
+  if(mappages(pagetable, USYSCALL, PGSIZE,
+              (uint64)(foo), PTE_R | PTE_U) < 0) {
+    // D: 'mappages' just build mappings, given the already-exist physical pages,
+    // thus set do_free = 0; Trust me, u don't wanto free them:).
+    uvmunmap(pagetable, TRAPFRAME, 2, 0);
+    uvmfree(pagetable, 0);
+    return 0;
+  }
+
   return pagetable;
 }
 
@@ -212,6 +230,7 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
+  uvmunmap(pagetable, USYSCALL, 1, 1);
   uvmfree(pagetable, sz);
 }
 

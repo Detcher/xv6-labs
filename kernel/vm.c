@@ -279,8 +279,8 @@ freewalk(pagetable_t pagetable)
       uint64 child = PTE2PA(pte);
       freewalk((pagetable_t)child);
       pagetable[i] = 0;
-    } else if(pte & PTE_V){
-      panic("freewalk: leaf");
+    } else if(pte & PTE_V){    // D: Just to make sure all LEAVES are removed/invalid otherwise panicking since,
+      panic("freewalk: leaf"); // violating the premise that not All leaf mappings have been removed.
     }
   }
   kfree((void*)pagetable);
