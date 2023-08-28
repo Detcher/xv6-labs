@@ -228,9 +228,9 @@ proc_pagetable(struct proc *p)
 void
 proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
-  uvmunmap(pagetable, TRAMPOLINE, 1, 0);
-  uvmunmap(pagetable, TRAPFRAME, 1, 0);
-  uvmunmap(pagetable, USYSCALL, 1, 1);
+  uvmunmap(pagetable, TRAMPOLINE, 1, 0); // do_free shouldbe 0 'cuz TRAMPOLINE is shared.
+  uvmunmap(pagetable, TRAPFRAME, 1, 0);  // do_free is 0 'cuz 'freeproc' has freed the page 'trapframe' points to.
+  uvmunmap(pagetable, USYSCALL, 1, 1);   // do_free needs tobe 1 to free the USYSCALL physical page
   uvmfree(pagetable, sz);
 }
 
