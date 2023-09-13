@@ -1,0 +1,7 @@
+a0-a7; a2
+no-where; the compiler made some optimizations(inline functions), getting results directly
+0x64a
+0x38
+HE110 World; 0x00726c64; no-need,
+    'cuz being Big-endian or Little-endian won't affect how to interpret a NUMBER, it just the sequence/layout of each part of the number
+mine is 8229; the second place-holder(after "y=")'s actual value should be in a2, but u haven't provided any value into it

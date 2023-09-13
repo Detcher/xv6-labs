@@ -48,6 +48,7 @@ usertrap(void)
   struct proc *p = myproc();
   
   // save user program counter.
+  // D: CPU(hw) stores PC into sepc previously
   p->trapframe->epc = r_sepc();
   
   if(r_scause() == 8){
