@@ -78,9 +78,19 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2) {
+    ++(p->passed_ticks);
+    if( p->ticks > 0 && p->passed_ticks == p->ticks && p->in_alarm == 0 ) {
+      // 'cuz 'p->handler' holds address from user space while satp holds kernel pgtbl currently which doesn't have the corresponding mappings
+      // ¡ı will panic,
+      // ((void(*)())(p->handler))();
+      p->in_alarm = 1;
+      *p->prev_trapframe = *p->trapframe;
+      p->trapframe->epc = p->handler;
+      p->passed_ticks = 0;
+    } 
     yield();
-
+  }
   usertrapret();
 }
 

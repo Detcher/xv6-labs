@@ -123,6 +123,7 @@ panic(char *s)
   printf(s);
   printf("\n");
   panicked = 1; // freeze uart output from other CPUs
+  backtrace();
   for(;;)
     ;
 }
@@ -139,8 +140,9 @@ backtrace(void)
 {
   printf("backtrace:\n");
   uint64 caller = r_fp();
-  uint64 pgstartaddr = PGROUNDDOWN(caller);
-  uint64 pgendaddr = pgstartaddr + 4096; // [pgstartaddr, pgendaddr)
+  // uint64 pgstartaddr = PGROUNDDOWN(caller);
+  // uint64 pgendaddr = pgstartaddr + 4096; // [pgstartaddr, pgendaddr)
+  uint64 pgendaddr = PGROUNDUP(caller);
   
   for( uint64 start = caller; start < pgendaddr; start = *(uint64 *)(start - 16) ) {
     printf("%p\n", *(uint64 *)(start - 8));
