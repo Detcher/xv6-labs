@@ -14,6 +14,12 @@ void freerange(void *pa_start, void *pa_end);
 extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
 
+#define PAGE_INDEX(p) (((p) - KERNBASE) / PGSIZE)
+#define PAGE_NUM PAGE_INDEX(PHYSTOP)
+int pg_rc[PAGE_NUM]; // from KERNBASE to PHYSTOP
+                                  // Well, i know it's overestimated, though:(
+#define PAGE_RC(p) pg_rc[PAGE_INDEX((uint64)p)]
+
 struct run {
   struct run *next;
 };
@@ -48,18 +54,29 @@ kfree(void *pa)
 {
   struct run *r;
 
-  if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
-    panic("kfree");
+  // D: 4-Debug-Only
+  if(((uint64)pa % PGSIZE) != 0) {
+    panic("kfree: not page-aligned");
+  }
+  if((char*)pa < end) {
+    panic("kfree: pa too low");
+  }
+  if((uint64)pa >= PHYSTOP) {
+    panic("kfree: pa too high");
+  }
 
-  // Fill with junk to catch dangling refs.
-  memset(pa, 1, PGSIZE);
+  decrease_pg_rc((void *)pa);
+  if( PAGE_RC(pa) <= 0 ) {
+    // Fill with junk to catch dangling refs.
+    memset(pa, 1, PGSIZE);
 
-  r = (struct run*)pa;
+    r = (struct run*)pa;
 
-  acquire(&kmem.lock);
-  r->next = kmem.freelist;
-  kmem.freelist = r;
-  release(&kmem.lock);
+    acquire(&kmem.lock);
+    r->next = kmem.freelist;
+    kmem.freelist = r;
+    release(&kmem.lock);
+  }
 }
 
 // Allocate one 4096-byte page of physical memory.
@@ -76,7 +93,21 @@ kalloc(void)
     kmem.freelist = r->next;
   release(&kmem.lock);
 
-  if(r)
+  if(r) {
     memset((char*)r, 5, PGSIZE); // fill with junk
+    PAGE_RC(r) = 1;
+  }
   return (void*)r;
+}
+
+void
+increase_pg_rc(void *pa)
+{
+  PAGE_RC(pa)++;
+}
+
+void
+decrease_pg_rc(void *pa)
+{
+  PAGE_RC(pa)--;
 }

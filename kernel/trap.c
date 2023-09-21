@@ -67,6 +67,37 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  } else if( r_scause() == 12 || r_scause() == 13 || r_scause() == 15 ) {
+    // page faults(instr && load && store)
+    
+    if(killed(p))
+      exit(-1);
+
+    uint64 faulting_addr = r_stval();
+    pte_t *faulting_pte = walk(p->pagetable, faulting_addr, 0);
+    // exception handler. Not fine-granularity. Could Optimize
+    if(faulting_pte == 0)
+      panic("usertrap: walk couldn't find valid page");
+    if((*faulting_pte & PTE_V) == 0)
+      panic("usertrap: walk couldn't find valid page");
+    if((*faulting_pte & PTE_U) == 0)
+      panic("usertrap: walk couldn't find valid page");
+    // check whether a COW mapping
+    if( (*faulting_pte & PTE_COW) != 0 ) { // yes
+      uint flags = (PTE_FLAGS(*faulting_pte) | PTE_W) & (~PTE_COW);
+      uint64 *cow_page = (uint64 *)kalloc();
+      if( cow_page == 0 ) {
+        setkilled(p);
+        panic("usertrap: kalloc went wrong, no sufficient memory");
+        exit(-1);
+      }
+      memmove( cow_page, (char *)PTE2PA(*faulting_pte), PGSIZE );
+      uvmunmap( p->pagetable, PGROUNDDOWN(faulting_addr), 1, 1 );
+      mappages( p->pagetable, faulting_addr, PGSIZE, *cow_page, flags );
+      // *faulting_pte = PA2PTE(cow_page) | flags | PTE_W;
+    } else { // no, page here is sacred...orz..orz. Kill it!
+      setkilled(p);
+    }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
