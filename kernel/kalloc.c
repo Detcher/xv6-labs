@@ -14,10 +14,12 @@ void freerange(void *pa_start, void *pa_end);
 extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
 
+struct spinlock pg_rc_lock;
+
 #define PAGE_INDEX(p) (((p) - KERNBASE) / PGSIZE)
 #define PAGE_NUM PAGE_INDEX(PHYSTOP)
-int pg_rc[PAGE_NUM]; // from KERNBASE to PHYSTOP
-                                  // Well, i know it's overestimated, though:(
+int pg_rc[PAGE_NUM]; // From KERNBASE to PHYSTOP
+                     // Well, i know it's overestimated, though:(
 #define PAGE_RC(p) pg_rc[PAGE_INDEX((uint64)p)]
 
 struct run {
@@ -33,6 +35,7 @@ void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  initlock(&pg_rc_lock, "page ref-count");
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -54,7 +57,7 @@ kfree(void *pa)
 {
   struct run *r;
 
-  // D: 4-Debug-Only
+  // D: For debugging
   if(((uint64)pa % PGSIZE) != 0) {
     panic("kfree: not page-aligned");
   }
@@ -65,6 +68,7 @@ kfree(void *pa)
     panic("kfree: pa too high");
   }
 
+  acquire(&pg_rc_lock);
   decrease_pg_rc((void *)pa);
   if( PAGE_RC(pa) <= 0 ) {
     // Fill with junk to catch dangling refs.
@@ -77,6 +81,7 @@ kfree(void *pa)
     kmem.freelist = r;
     release(&kmem.lock);
   }
+  release(&pg_rc_lock);
 }
 
 // Allocate one 4096-byte page of physical memory.
@@ -103,11 +108,39 @@ kalloc(void)
 void
 increase_pg_rc(void *pa)
 {
+  acquire(&pg_rc_lock);
   PAGE_RC(pa)++;
+  release(&pg_rc_lock);
 }
 
 void
 decrease_pg_rc(void *pa)
 {
   PAGE_RC(pa)--;
+}
+
+void *
+new_page_or_self(void *pa)
+{
+  acquire(&pg_rc_lock);
+  if( PAGE_RC(pa) <= 1 ) { // D: is "<" necessary?
+    release(&pg_rc_lock);
+    return pa;
+  }
+
+  uint64 cow_page = (uint64)kalloc();
+  if( cow_page == 0 ) {
+    /*
+    ** 'panic()' here maybe not appropriate. 
+    ** Leave the option to the user/code using 'new_page_or_self'
+    */
+    // panic("new_page_or_self: kalloc went wrong, no sufficient memory");
+    release(&pg_rc_lock);
+    return 0;
+  }
+  memmove( (void *)cow_page, pa, PGSIZE );
+
+  // decrease_pg_rc(pa);
+  release(&pg_rc_lock);
+  return (void *)cow_page;
 }

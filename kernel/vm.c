@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -341,6 +343,64 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   return -1;
 }
 
+// return value:
+// 1: a COW-page
+// 0: read-only all the time!
+int
+uvmcowcheck(uint64 faulting_va)
+{
+  pte_t *faulting_pte;
+  struct proc *p = myproc();
+
+  return (faulting_va < p->sz) // #Bug2: Here!! check the 'copyout()' in usertests.c when va is way highr than MAXVA. Must before the calliong of 'walk()'!
+      && ((faulting_pte = walk(p->pagetable, faulting_va, 0)) != 0)
+      && (*faulting_pte & PTE_V)
+      && (*faulting_pte & PTE_COW);
+}
+
+int 
+uvmcowcopy(uint64 faulting_va)
+{
+  struct proc *p = myproc();
+  pte_t *faulting_pte = walk(p->pagetable, faulting_va, 0);
+  uint64 faulting_pa = PTE2PA(*faulting_pte);
+
+  if(faulting_pte == 0)
+    panic("uvmcowcopy: walk couldn't find valid pte");
+  /*
+  ** TL;DR: 'uvmcowcopy' just do COPY, 'uvmcowcheck' just do CHECK.
+  ** ------------------------------------------------------------
+  ** follow the convention -- Do one thing, and do it well, so
+  ** pages here must be all COW-pages, while
+  ** the checking(whether it is a cow-page) is done at 'uvmcowcheck' above
+  */
+  uint64 cow_page = 0;
+  uint flags = (PTE_FLAGS(*faulting_pte) | PTE_W) & (~PTE_COW);
+  
+  if( (cow_page = (uint64)new_page_or_self((void *)faulting_pa)) == 0 ) {
+    // kalloc went wrong, no sufficient memory
+    return -1;
+  }
+  if( cow_page == faulting_pa ) { // given page's RC = 1, thus you dont need to allocate a new page
+    *faulting_pte |= PTE_W;
+    *faulting_pte &= (~PTE_COW);
+  } else {
+    uvmunmap( p->pagetable, PGROUNDDOWN(faulting_va), 1, 1 );
+    /*
+    ** Using 'mappages( p->pagetable, faulting_va, PGSIZE, cow_page, flags );' turns out to be wrong!
+    ** "ERROR: panic("mappages: remap");""
+    ** Curious about the solution; choose to overwrite directly without 'mappages'¡ý
+    ** [UPDATED]: check Line-398, one of the solutions(set "size" to 1 other than PGSIZE. Feel it:)
+    */
+    *faulting_pte = PA2PTE(cow_page) | flags;
+  }
+  // uvmunmap( p->pagetable, PGROUNDDOWN(faulting_va), 1, 1 );
+  // if( mappages(p->pagetable, faulting_va, 1, cow_page, flags) ) {
+  //   panic("uvmcowcopy: mappages");
+  // }
+  return 0;
+}
+
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.
 void
@@ -361,8 +421,19 @@ int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
+  /*
+  ** #Bug0: Here!! Shoudln't use "p->pagetable", check the calling point at 'exec()'; using "pagetable" instead
+  ** There'll be many calls of 'copyout()', 'exec()' is one of 'em. The system needs it to initialize the very first user process
+  ** Through the code of 'exec()', you'll find that, exec() will allocate new page-TABLE to the process, and COMMIT the change in the end("p->pagetable = pagetable;")
+  ** So, "dstva" exists in newly-allocated page-table other than p->pagetable!
+  */
+  // pte_t *pte = walk( p->pagetable, dstva, 0 ); // Wrong
+  // pte_t *pte = walk( pagetable, dstva, 0 );    // Right
 
   while(len > 0){
+    if( uvmcowcheck(dstva) ) {
+      uvmcowcopy(dstva);
+    }
     va0 = PGROUNDDOWN(dstva);
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
