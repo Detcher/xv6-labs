@@ -1,3 +1,6 @@
+/*
+** For checking stack frame of xv6 using gdb
+*/
 #include "types.h"
 #include "riscv.h"
 #include "defs.h"
@@ -5,7 +8,9 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
-// #include "sysinfo.h"
+
+#pragma GCC push_options
+#pragma GCC optimize (0)
 
 int foo3( int c, int d, int e, int f, int g, int h, int i ) {
     int add_on3 = 12;
@@ -27,3 +32,5 @@ int dummymain() {
     printf("main: %d\n", answer1);
     return 0;
 }
+
+#pragma GCC pop_options
