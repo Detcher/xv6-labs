@@ -17,7 +17,9 @@
 
 // the UART control registers.
 // some have different meanings for
-// read vs write.
+// read vs write. D: multiplex? Noticed some regs have the same addr,
+                  // Like DLL/DLM, PSD share the same addr with RHR/THR/IER, LSR(addr 0, addr 1, addr 5).
+                  // As for the same addr, Read-op or Write-op? Whether the specific bit is set? can all affect which reg operates on:)
 // see http://byterunner.com/16550.html
 #define RHR 0                 // receive holding register (for input bytes)
 #define THR 0                 // transmit holding register (for output bytes)
@@ -41,7 +43,7 @@
 // the transmit output buffer.
 struct spinlock uart_tx_lock;
 #define UART_TX_BUF_SIZE 32
-char uart_tx_buf[UART_TX_BUF_SIZE];
+char uart_tx_buf[UART_TX_BUF_SIZE]; // D: contents in the buf ultimately go into the THR, just like USER sends somethin' into the UART.
 uint64 uart_tx_w; // write next to uart_tx_buf[uart_tx_w % UART_TX_BUF_SIZE]
 uint64 uart_tx_r; // read next from uart_tx_buf[uart_tx_r % UART_TX_BUF_SIZE]
 
@@ -119,6 +121,7 @@ uartputc_sync(int c)
   }
 
   // wait for Transmit Holding Empty to be set in LSR.
+  // D: for THR(FIFO version), FIFO must be completely empty if IDLE bit = 1.
   while((ReadReg(LSR) & LSR_TX_IDLE) == 0)
     ;
   WriteReg(THR, c);
@@ -172,9 +175,13 @@ uartgetc(void)
 // handle a uart interrupt, raised because input has
 // arrived, or the uart is ready for more output, or
 // both. called from devintr().
+// D: UART interrupts if:
+// rx FIFO goes from empty to not-empty, or
+// tx FIFO goes from full to not-full
 void
 uartintr(void)
 {
+  // D: either somethin' has arrived at rx FIFO
   // read and process incoming characters.
   while(1){
     int c = uartgetc();
@@ -182,9 +189,10 @@ uartintr(void)
       break;
     consoleintr(c);
   }
-
+  // D: or, uart_tx_buf should send somethin' to tx FIFO
   // send buffered characters.
   acquire(&uart_tx_lock);
   uartstart();
   release(&uart_tx_lock);
+  // D: or both:)
 }

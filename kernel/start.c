@@ -8,7 +8,7 @@ void main();
 void timerinit();
 
 // entry.S needs one stack per CPU.
-__attribute__ ((aligned (16))) char stack0[4096 * NCPU];
+__attribute__ ((aligned (16))) char stack0[4096 * NCPU]; // D: scheduler stack
 
 // a scratch area per CPU for machine-mode timer interrupts.
 uint64 timer_scratch[NCPU][5];
@@ -27,7 +27,7 @@ start()
   w_mstatus(x);
 
   // set M Exception Program Counter to main, for mret.
-  // requires gcc -mcmodel=medany
+  // requires gcc -mcmodel=medany D: why?
   w_mepc((uint64)main);
 
   // disable paging for now.
@@ -35,13 +35,13 @@ start()
 
   // delegate all interrupts and exceptions to supervisor mode.
   w_medeleg(0xffff);
-  w_mideleg(0xffff);
+  w_mideleg(0xffff);   
   w_sie(r_sie() | SIE_SEIE | SIE_STIE | SIE_SSIE);
 
   // configure Physical Memory Protection to give supervisor mode
   // access to all of physical memory.
   w_pmpaddr0(0x3fffffffffffffull);
-  w_pmpcfg0(0xf);
+  w_pmpcfg0(0xf); // D: what does it mean?
 
   // ask for clock interrupts.
   timerinit();
