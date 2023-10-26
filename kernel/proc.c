@@ -486,7 +486,7 @@ sched(void)
 
   if(!holding(&p->lock))
     panic("sched p->lock");
-  if(mycpu()->noff != 1)
+  if(mycpu()->noff != 1) // D: must hold only one lock, that is p->lock
     panic("sched locks");
   if(p->state == RUNNING)
     panic("sched running");
