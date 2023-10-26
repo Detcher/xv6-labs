@@ -8,6 +8,8 @@
 #define NBUCKET 5
 #define NKEYS 100000
 
+static pthread_mutex_t table_lock;
+
 struct entry {
   int key;
   int value;
@@ -28,12 +30,21 @@ now()
 
 static void 
 insert(int key, int value, struct entry **p, struct entry *n)
-{
+{ 
   struct entry *e = malloc(sizeof(struct entry));
   e->key = key;
   e->value = value;
+  /*
+  ** D: You can't do this, still losing updates.
+  ** Because of "struct entry *n",
+  ** when entering insert(...), thread holds a old "n",
+  ** especially when other threads have updated the "n",
+  ** thus bypassing the updates from other threads.
+  */
+  // pthread_mutex_lock(&table_lock);
   e->next = n;
   *p = e;
+  // pthread_mutex_unlock(&table_lock);
 }
 
 static 
@@ -43,18 +54,23 @@ void put(int key, int value)
 
   // is the key already present?
   struct entry *e = 0;
+
+  pthread_mutex_lock(&table_lock);
   for (e = table[i]; e != 0; e = e->next) {
     if (e->key == key)
       break;
   }
+  pthread_mutex_unlock(&table_lock);
+
   if(e){
     // update the existing key.
     e->value = value;
   } else {
     // the new is new.
+    pthread_mutex_lock(&table_lock);
     insert(key, value, &table[i], table[i]);
+    pthread_mutex_unlock(&table_lock);
   }
-
 }
 
 static struct entry*
@@ -74,7 +90,7 @@ get(int key)
 static void *
 put_thread(void *xa)
 {
-  int n = (int) (long) xa; // thread number
+  int n = (int) (long) xa; // thread number(D: start from 0, 1, ...)
   int b = NKEYS/nthread;
 
   for (int i = 0; i < b; i++) {
@@ -105,6 +121,7 @@ main(int argc, char *argv[])
   void *value;
   double t1, t0;
 
+  pthread_mutex_init( &table_lock, NULL );
 
   if (argc < 2) {
     fprintf(stderr, "Usage: %s nthreads\n", argv[0]);
@@ -147,4 +164,6 @@ main(int argc, char *argv[])
 
   printf("%d gets, %.3f seconds, %.0f gets/second\n",
          NKEYS*nthread, t1 - t0, (NKEYS*nthread) / (t1 - t0));
+
+  pthread_mutex_destroy(&table_lock);
 }

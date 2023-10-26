@@ -1,0 +1,6 @@
+No concurrency with 1 thread when accessing the shared hash table;
+When 2 threads(A && B) both execute to the place between "35: e->next = n;" and "36: *p = e;", and A keeps executing,
+    making table[i] points to its new entry; 
+    But when B executes next, it makes table[i] pointing to its new entry,
+    thus losing new entry from A.
+"Losing Updates"
