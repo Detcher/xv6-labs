@@ -325,6 +325,55 @@ fork(void)
   return pid;
 }
 
+int
+thread_create( void(*fcn)(void *), void *arg, void *stack )
+{
+  int i, pid;
+  struct proc *np;
+  struct proc *p = myproc();
+
+  // Allocate process.
+  if((np = allocproc()) == 0){
+    return -1;
+  }
+
+  // D: push void *arg && fake PC into the user stack
+  np->
+
+  np->pagetable = p->pagetable;
+  np->sz = p->sz;
+
+  // copy saved user registers.
+  *(np->trapframe) = *(p->trapframe);
+
+  // Cause fork to return 0 in the child.
+  // D: Optional(no need for threads): np->trapframe->a0 = 0;
+  np->trapframe->epc = (uint64)fcn;
+  np->trapframe->sp = (uint64)stack; // D: or maybe stack+PGSIZE?
+
+  // increment reference counts on open file descriptors.
+  for(i = 0; i < NOFILE; i++)
+    if(p->ofile[i])
+      np->ofile[i] = filedup(p->ofile[i]);
+  np->cwd = idup(p->cwd);
+
+  safestrcpy(np->name, p->name, sizeof(p->name));
+
+  pid = np->pid;
+
+  release(&np->lock);
+
+  acquire(&wait_lock);
+  np->parent = p;
+  release(&wait_lock);
+
+  acquire(&np->lock);
+  np->state = RUNNABLE;
+  release(&np->lock);
+
+  return pid;
+}
+
 // Pass p's abandoned children to init.
 // Caller must hold wait_lock.
 void

@@ -215,7 +215,8 @@ endif
 
 ifeq ($(LAB),thread)
 UPROGS += \
-	$U/_uthread
+	$U/_uthread,
+	$U/_thread
 
 $U/uthread_switch.o : $U/uthread_switch.S
 	$(CC) $(CFLAGS) -c -o $U/uthread_switch.o $U/uthread_switch.S
@@ -223,6 +224,9 @@ $U/uthread_switch.o : $U/uthread_switch.S
 $U/_uthread: $U/uthread.o $U/uthread_switch.o $(ULIB)
 	$(LD) $(LDFLAGS) -N -e main -Ttext 0 -o $U/_uthread $U/uthread.o $U/uthread_switch.o $(ULIB)
 	$(OBJDUMP) -S $U/_uthread > $U/uthread.asm
+
+$U/_thread: $U/thread.o $(ULIB)
+	$(LD) $(LDFLAGS) -N -e main -Ttext 0 -o $U/_thread $U/thread.o $(ULIB)
 
 ph: notxv6/ph.c
 	gcc -o ph -g -O2 $(XCFLAGS) notxv6/ph.c -pthread

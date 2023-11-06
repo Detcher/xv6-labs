@@ -91,3 +91,27 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_thread_create(void)
+{
+  void(*fcn)(void *);
+  void *arg, *stack;
+  argaddr( 0, (uint64)fcn ); 
+  argaddr( 1, (uint64)arg ); 
+  argaddr( 2, (uint64)stack ); 
+
+  return thread_create( fcn, arg, stack );
+}
+
+uint64
+sys_thread_join(void)
+{
+
+}
+
+uint64
+sys_thread_exit(void)
+{
+
+}
