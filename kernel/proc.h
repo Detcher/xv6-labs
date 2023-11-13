@@ -92,6 +92,12 @@ struct proc {
   int xstate;                  // Exit status to be returned to parent's wait
   int pid;                     // Process ID
 
+  // D: thread info
+  struct proc *tg[NKLT];       // threads group; Recursive? Another tg in a "thread"?
+  int thread_id;               // index into the tg array
+  void *ustack;                // addr of user stack passed in thread_create()
+
+
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process
 

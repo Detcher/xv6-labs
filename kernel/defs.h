@@ -84,7 +84,9 @@ void            printfinit(void);
 // proc.c
 int             cpuid(void);
 void            exit(int);
+void            thread_exit();
 int             fork(void);
+int             thread_create(void(*fcn)(void *), void *arg, void *stack);
 int             growproc(int);
 void            proc_mapstacks(pagetable_t);
 pagetable_t     proc_pagetable(struct proc *);
@@ -101,6 +103,7 @@ void            sched(void);
 void            sleep(void*, struct spinlock*);
 void            userinit(void);
 int             wait(uint64);
+int             thread_join();
 void            wakeup(void*);
 void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
