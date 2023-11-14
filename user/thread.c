@@ -47,6 +47,29 @@ void do_work(void *arg){
    
     struct balance *b = (struct balance*) arg; 
     printf("Starting do_work: s:%s\n", b->name);
+    
+    // while(1) {}
+
+    for (i = 0; i < b->amount; i++) { 
+        //  thread_spin_lock(&balance_lock);
+         old = total_balance;
+         delay(100000);
+         total_balance = old + 1;
+        //  thread_spin_unlock(&balance_lock);
+    }
+  
+    printf("Done s:%s\n", b->name);
+
+    thread_exit();
+    return;
+}
+
+void do_work2(void *arg){
+    int i; 
+    int old;
+   
+    struct balance *b = (struct balance*) arg; 
+    printf("Starting do_work: s:%s\n", b->name);
 
     for (i = 0; i < b->amount; i++) { 
         //  thread_spin_lock(&balance_lock);
@@ -77,6 +100,7 @@ int main(int argc, char *argv[]) {
 
   t1 = thread_create(do_work, (void*)&b1, s1);
   t2 = thread_create(do_work, (void*)&b2, s2); 
+//   t2 = thread_create(do_work2, (void*)&b2, s2); 
 
   r1 = thread_join();
   r2 = thread_join();

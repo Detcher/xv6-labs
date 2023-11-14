@@ -1,49 +1,100 @@
-xv6 is a re-implementation of Dennis Ritchie's and Ken Thompson's Unix
-Version 6 (v6).  xv6 loosely follows the structure and style of v6,
-but is implemented for a modern RISC-V multiprocessor using ANSI C.
+***Background***:
 
-ACKNOWLEDGMENTS
+- xv6做出了最简单的assumption，proc有一个user-level thread，有一个kernel-level thread，并且不能同时运行；kernel thread像是被激活(activated)了，因为trap，而不是真的在running
 
-xv6 is inspired by John Lions's Commentary on UNIX 6th Edition (Peer
-to Peer Communications; ISBN: 1-57398-013-7; 1st edition (June 14,
-2000)).  See also https://pdos.csail.mit.edu/6.1810/, which provides
-pointers to on-line resources for v6.
+- lab multithreading里实现了多对一模型，但是. . . . . .
+   - 一个user-level thread block，进程内其余的threads无法继续运行
+   - 同一进程内的threads不能run parallel在不同core上
 
-The following people have made contributions: Russ Cox (context switching,
-locking), Cliff Frey (MP), Xiao Yu (MP), Nickolai Zeldovich, and Austin
-Clements.
+----
 
-We are also grateful for the bug reports and patches contributed by
-Takahiro Aoyagi, Silas Boyd-Wickizer, Anton Burtsev, carlclone, Ian
-Chen, Dan Cross, Cody Cutler, Mike CAT, Tej Chajed, Asami Doi,
-eyalz800, Nelson Elhage, Saar Ettinger, Alice Ferrazzi, Nathaniel
-Filardo, flespark, Peter Froehlich, Yakir Goaron, Shivam Handa, Matt
-Harvey, Bryan Henry, jaichenhengjie, Jim Huang, Mat煤拧 J贸kay, John
-Jolly, Alexander Kapshuk, Anders Kaseorg, kehao95, Wolfgang Keller,
-Jungwoo Kim, Jonathan Kimmitt, Eddie Kohler, Vadim Kolontsov, Austin
-Liew, l0stman, Pavan Maddamsetti, Imbar Marinescu, Yandong Mao, Matan
-Shabtay, Hitoshi Mitake, Carmi Merimovich, Mark Morrissey, mtasm, Joel
-Nider, Hayato Ohhashi, OptimisticSide, Harry Porter, Greg Price, Jude
-Rich, segfault, Ayan Shafqat, Eldar Sehayek, Yongming Shen, Fumiya
-Shigemitsu, Cam Tenny, tyfkda, Warren Toomey, Stephen Tu, Rafael Ubal,
-Amane Uehara, Pablo Ventura, Xi Wang, WaheedHafez, Keiichi Watanabe,
-Nicolas Wolovick, wxdao, Grant Wu, Jindong Zhang, Icenowy Zheng,
-ZhUyU1997, and Zou Chang Wei.
+***Implement 1:1 thread model(a tiny subset of Pthreads)***
 
+- wait()
 
-The code in the files that constitute xv6 is
-Copyright 2006-2022 Frans Kaashoek, Robert Morris, and Russ Cox.
+- `struct proc proc[NPROC]`中每一个成员的tg[0]一定分别指向他们自己，兼容xv6的assumption，即一个proc只有一个thread(同一proc在某个时刻只会有user/kernel thread在运行，或者都不运行)
 
-ERROR REPORTS
+- 偏向于Linux中的设计，process和thread都是task_struct,另一种设计是把`PCB`和`TCB`分开；通过实现thread_create()可以感觉到，创建thread与process(fork())的过程大差不差，无非就是共享资源的多与少
 
-Please send errors and suggestions to Frans Kaashoek and Robert Morris
-(kaashoek,rtm@mit.edu).  The main purpose of xv6 is as a teaching
-operating system for MIT's 6.1810, so we are more interested in
-simplifications and clarifications than new features.
+- trapframe
+  - 沿用旧设计(#PR98)，可以将trampoline里的TRAPFRAME设置为其他thread的值
+    - allocproc/allocthread都会设置ra到forkret，再到usertrapret，在这里可以设置a1为特定执行流的trapframe，之后再到userret，末尾设置sscratch为trapframe；在这之后，新创建的proc/thread开始执行，发生trap后通过sscratch即可load进正确的trapframe
+    - 旧设计里sscratch的用法可能没必要，但是在实现pthreads这里确实需要这个设计，需要`sscratch`的帮助
+  - 思路一，每一个thread一页TRAPFRAME(va)，一页p->trapframe(pa)，需要在thread_create()里重新mappages()，把新创建thread的trapframe映射到parent_proc的页表里
+  - 思路二，只需要每一个进程最开始创建的一页TRAPFRAME/trapframe即可，因为所有新创建的proc/thread最后都会去往forkret()，再到usertrapret()，末尾可以把新创建proc/thread的TRAPFRAME(va)传给trampoline，就可以设置在sscratch里了，之后发生trap都走这个TRAPFRAME，trampoline.s这个文件就不用因为每个thread新分配的trapframe而改动太多代码，基本上不用改；这里其实挺妙的，初始proc分配的TRAPFRAME/trapframe足足有4KB，每一个字节都是一一对应的，但是对于一个proc只需要sizeof(struct proc)即可，所以其实之后创建的thread仍可以采用这个***intial*** mapping，只不过他们的TRAPFRAME在前一个的sizeof(struct trapframe)之后，至于p->trapframe，直接在原始的base_trapframe加上sizeof(struct trapframe)即可！并且之后free thread时，不需要free掉映射关系，同时也不能free掉thread的trapframe(pa)，因为kfree需要pa page-aligned，但是除了第一个thread(parent_proc)的tf是对齐外，其余threads都是往上再加sizeof(struct trapframe)
 
-BUILDING AND RUNNING XV6
+- 需要保证传送进来的user stack page-aligned，不然free掉thread ustack时可能会free掉其他与该thread无关的内容；当然也可以要求用户手动释放掉malloc的***heap*** stack
+  - 暂时不能用kfree，因为无法保证是page-aligned的，诸如valloc()/memalign()这些API可以分配page-align的内存  
 
-You will need a RISC-V "newlib" tool chain from
-https://github.com/riscv/riscv-gnu-toolchain, and qemu compiled for
-riscv64-softmmu.  Once they are installed, and in your shell
-search path, you can run "make qemu".
+- TL;DR: all threads share the same parent, despite being recursive or not:)
+  - Keyword: recursive thread_create() | fake parent_proc
+    - the parent_proc may be a thread that just called thread_create(), and they all share the original parent_proc's pgtbl. So really, NOTICE the relationship between them, who's the real parent and who's the fake
+  - strategy: 在thread_create()时，如果是thread调用，即发生了递归调用的情况，将新创建的thread的parent设置为最初始的proc，因为不管递归调用多少次，那些threads都是在当前proc内部，所以此时就没有real parent/fake parent的说法了，所有同进程内的spawned threads(不管是递归调用还是水平同级调用)的父母都是同一个
+
+- assumption: 在initproc(init.c)中不会用thread_create()，即第一个proc的tg里除了tg[0]指向自己外，其余永远保持为空；否则在reparent时可能会有冲突
+
+- pid每次加1，没有上限，有下限，没有复用pid一说；而thread_id的范围是0-63，每一个id都可以复用
+
+- 只有proc(#thread0)需要调用reparent()，进程在exit时会有两类children
+  - threads(thread_create()): set killed
+  - proc(fork()): reparent to initproc
+  - 注意，proc需要存活直至thread被kill完，因为thread里面可能在做一些敏感操作
+  - A process, who is created with `fork`, calls the `exit` and the process with its created threads will all terminate // 注意，如果一个proc exit，那么他的所有thread都需要terminate，不能将他们reparent给initproc！皮之不附，毛将焉存？thread运行的就是proc text区的代码，proc都没了，thread肯定也没有存在的意义
+
+----
+
+***TODO:***
+- TLB Shootdown when updating a page table for a multithreaded user process
+
+- 如何在内核中正确释放用户传进来的ustack
+    - Hint: Additionally, you may need to copy the `stack` address back (to free it) in a similar way as the `copyout` for `xstate`
+
+- user-level synchronization mechanism(locks, condition variables, barriers, etc)
+
+- potential races: two threads on different processors could call `thread_schedule` concurrently, select the same runnable thread, and both run it on different processors.做好多核之间共享资源的同步与互斥
+
+- fd表，应该要共享而不是每个thread一张(p->ofile)
+
+- N:M thread model
+
+- Better thread stack(not allocated in parent_proc's heap), maybe with the guard page
+
+- optionally specify that a lock should be re-entrant
+
+- ***TL;DR: synchronize updates to shared resources(address space) in the same proc*** // if a pthread changes its process’s address space (e.g., maps or unmaps memory), the kernel must arrange that other CPUs that run threads of the same process update their hardware page tables to reflect the change in the address space
+
+- Modify xv6 to use only one context switch when switching from one process’s kernel thread to another, rather than switching through the scheduler thread. The yielding thread will need to select the next thread itself and call swtch. The challenges will be to prevent multiple cores from executing the same thread accidentally; to get the locking right; and to avoid deadlocks
+
+- Modify xv6’s scheduler to use the RISC-V WFI (wait for interrupt) instruction when no processes are runnable. Try to ensure that, any time there are runnable processes waiting to run, no cores are pausing in WFI
+  - scheduler里的for-loop如果没有runnable的thread就不要spin了
+  - 依靠for-loop来检测是否有runnable thread有点低效
+
+----
+
+- Threads separate the notion of a sequential execution stream from the other aspects of traditional processes such aa address spaces and 1/0 descriptors. This separation of concerns yields a significant performance advantage relative to traditional processes
+
+- thread的存在将proc解耦合了，自此之后，process只管理相关资源，thread负责执行/被调度
+
+- threads vs. subroutines? llnl HPC关于Pthreads的文档里将threads类比于subroutines；但其实对于子函数的调用来说，regs的保存与恢复都由compiler在调用方和被调用方的栈上操作，因此也有caller/callee-saved的区别；但是thread switch需要自己操作，保存当前thread的context，恢复目标thread的context
+
+----
+
+arm里是有专门的thread ID regs，方便OS管理 | x86有fs/gs reg
+- https://developer.arm.com/documentation/ddi0388/b/system-control-coprocessor/register-descriptions/c13--software-thread-id-registers
+- https://stackoverflow.com/questions/64856566/what-is-the-purpose-of-thread-id-registers-like-tpidr-el0-tpidr-el1-in-arm
+- https://groups.google.com/a/groups.riscv.org/g/sw-dev/c/cov47bNy5gY
+
+tp到底有什么用？<->RISC-V.md
+
+----
+
+***ref:***
+- https://pages.cs.wisc.edu/~cs537-3/Projects/p4b.html p3b(relocated stacks)??
+- https://courses.cs.duke.edu/fall22/compsci310/thread.html more detailed
+- https://users.cs.utah.edu/~aburtsev/238P/2019spring/hw/hw4-threads.html more complete | implication about ustack && synchronization
+- https://www.ietfng.org/nwf/cs/osassign-uthreads.html 有关多线程的，找到的实验内容最多的一个(uthreads-part)
+- https://www.ietfng.org/nwf/cs/osassign-kthreads.html (kthreads-part | have mechanisms for TLB shootdown)
+- https://web.mit.edu/nathanw/www/usenix/freenix-sa/freenix-sa.html another approach to cope with the problem, different from the one-to-one model Linux kernel adopted, this page introduces scheduler activations, known as many-to-many/two-tier model
+- https://www.cse.unsw.edu.au/~cs9242/08/lectures/05-recap.pdf 有一些关于upcall的细节
+- https://www.cs.uic.edu/~jbell/CourseNotes/OperatingSystems/4_Threads.html 不同system对threads的支持
+- https://www.cs.ucr.edu/~heng/teaching/cs179f-winter20/lec1.pdf ppt

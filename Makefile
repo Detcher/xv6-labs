@@ -216,6 +216,7 @@ endif
 ifeq ($(LAB),thread)
 UPROGS += \
 	$U/_thread
+#   $U/_uthread
 
 $U/uthread_switch.o : $U/uthread_switch.S
 	$(CC) $(CFLAGS) -c -o $U/uthread_switch.o $U/uthread_switch.S

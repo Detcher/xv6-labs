@@ -105,6 +105,8 @@ thread_a(void)
   while(b_started == 0 || c_started == 0)
     thread_yield();
   
+  // while(1) {}
+
   for (i = 0; i < 100; i++) {
     printf("thread_a %d\n", i);
     a_n += 1;
