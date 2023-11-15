@@ -172,9 +172,9 @@ found:
   p->state = USED;
 
   // D: Register to parent_process' thread_group to track.
-  if( parent_proc->tg[0] == 0 ) {
+  if( parent_proc->tg[0] == 0 )
     panic("allocthread: tg[0] should't be zero, always pointing to itself");
-  }
+
   for( int i = 1; i < NKLT; i++ ) {
     if( parent_proc->tg[i] == 0 ) {
       parent_proc->tg[i] = p;
@@ -182,7 +182,6 @@ found:
       break;
     }
   } 
-  // p->trapframe = parent_proc->trapframe + p->thread_id * sizeof(struct trapframe);
   p->trapframe = parent_proc->trapframe + p->thread_id;
 
   // Set up new context to start executing at forkret,
@@ -204,10 +203,6 @@ freeproc(struct proc *p)
   if( p->trapframe && p->thread_id == 0 )
     kfree( (void*)p->trapframe );
   p->trapframe = 0;
-
-  if( p->ustack && p->thread_id != 0 ) {
-    kfree( (void *)walkaddr(p->pagetable, (uint64)p->ustack) );
-  }
 
   if( p->pagetable && p->thread_id == 0 )
     proc_freepagetable(p->pagetable, p->sz);

@@ -10,15 +10,13 @@
 
 ***Implement 1:1 thread model(a tiny subset of Pthreads)***
 
-- wait()
-
 - `struct proc proc[NPROC]`中每一个成员的tg[0]一定分别指向他们自己，兼容xv6的assumption，即一个proc只有一个thread(同一proc在某个时刻只会有user/kernel thread在运行，或者都不运行)
 
 - 偏向于Linux中的设计，process和thread都是task_struct,另一种设计是把`PCB`和`TCB`分开；通过实现thread_create()可以感觉到，创建thread与process(fork())的过程大差不差，无非就是共享资源的多与少
 
 - trapframe
   - 沿用旧设计(#PR98)，可以将trampoline里的TRAPFRAME设置为其他thread的值
-    - allocproc/allocthread都会设置ra到forkret，再到usertrapret，在这里可以设置a1为特定执行流的trapframe，之后再到userret，末尾设置sscratch为trapframe；在这之后，新创建的proc/thread开始执行，发生trap后通过sscratch即可load进正确的trapframe
+    - allocproc/allocthread都会设置ra到forkret，再到usertrapret，在这里可以设置a0为特定执行流的trapframe，之后再到userret，末尾设置sscratch为trapframe；在这之后，新创建的proc/thread开始执行，发生trap后通过sscratch即可load进正确的trapframe
     - 旧设计里sscratch的用法可能没必要，但是在实现pthreads这里确实需要这个设计，需要`sscratch`的帮助
   - 思路一，每一个thread一页TRAPFRAME(va)，一页p->trapframe(pa)，需要在thread_create()里重新mappages()，把新创建thread的trapframe映射到parent_proc的页表里
   - 思路二，只需要每一个进程最开始创建的一页TRAPFRAME/trapframe即可，因为所有新创建的proc/thread最后都会去往forkret()，再到usertrapret()，末尾可以把新创建proc/thread的TRAPFRAME(va)传给trampoline，就可以设置在sscratch里了，之后发生trap都走这个TRAPFRAME，trampoline.s这个文件就不用因为每个thread新分配的trapframe而改动太多代码，基本上不用改；这里其实挺妙的，初始proc分配的TRAPFRAME/trapframe足足有4KB，每一个字节都是一一对应的，但是对于一个proc只需要sizeof(struct proc)即可，所以其实之后创建的thread仍可以采用这个***intial*** mapping，只不过他们的TRAPFRAME在前一个的sizeof(struct trapframe)之后，至于p->trapframe，直接在原始的base_trapframe加上sizeof(struct trapframe)即可！并且之后free thread时，不需要free掉映射关系，同时也不能free掉thread的trapframe(pa)，因为kfree需要pa page-aligned，但是除了第一个thread(parent_proc)的tf是对齐外，其余threads都是往上再加sizeof(struct trapframe)
@@ -40,6 +38,8 @@
   - proc(fork()): reparent to initproc
   - 注意，proc需要存活直至thread被kill完，因为thread里面可能在做一些敏感操作
   - A process, who is created with `fork`, calls the `exit` and the process with its created threads will all terminate // 注意，如果一个proc exit，那么他的所有thread都需要terminate，不能将他们reparent给initproc！皮之不附，毛将焉存？thread运行的就是proc text区的代码，proc都没了，thread肯定也没有存在的意义
+
+- growproc()，进程内同步更新
 
 ----
 
@@ -80,6 +80,7 @@
 ----
 
 arm里是有专门的thread ID regs，方便OS管理 | x86有fs/gs reg
+
 - https://developer.arm.com/documentation/ddi0388/b/system-control-coprocessor/register-descriptions/c13--software-thread-id-registers
 - https://stackoverflow.com/questions/64856566/what-is-the-purpose-of-thread-id-registers-like-tpidr-el0-tpidr-el1-in-arm
 - https://groups.google.com/a/groups.riscv.org/g/sw-dev/c/cov47bNy5gY

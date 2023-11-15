@@ -142,7 +142,7 @@ userret:
         ld t6, 280(a0)
 
 	# restore user a0
-        # D: put trapframe(va) back into sscratch
+        # D: put TRAPFRAME(va) back into sscratch
         csrrw a0, sscratch, a0
         
         # return to user mode and user pc.
