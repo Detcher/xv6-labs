@@ -23,32 +23,35 @@
 #include "fs.h"
 #include "buf.h"
 
-struct {
-  struct spinlock lock;
-  struct buf buf[NBUF];
+#define NBUCKET 13
+#define HASH(index) (index % NBUCKET)
 
-  // Linked list of all buffers, through prev/next.
-  // Sorted by how recently the buffer was used.
-  // head.next is most recent, head.prev is least.
+struct bucket {
   struct buf head;
+  struct spinlock bucket_lck;
+};
+
+struct {
+  struct buf buf[NBUF]; // D: buf pool!
+  struct bucket bcache_tbl[NBUCKET];
 } bcache;
 
 void
 binit(void)
 {
   struct buf *b;
+  char lck_name[NBUCKET];
 
-  initlock(&bcache.lock, "bcache");
+  for( int i = 0; i < NBUCKET; ++i ) {
+    snprintf( lck_name, sizeof(lck_name), "bcache_%d", i );
+    initlock( &bcache.bcache_tbl[i].bucket_lck, lck_name );
 
-  // Create linked list of buffers
-  bcache.head.prev = &bcache.head;
-  bcache.head.next = &bcache.head;
-  for(b = bcache.buf; b < bcache.buf+NBUF; b++){
-    b->next = bcache.head.next;
-    b->prev = &bcache.head;
+    bcache.bcache_tbl[i].head.next = bcache.bcache_tbl[i].head.prev = &bcache.bcache_tbl[i].head;
+  }
+
+  for( b = bcache.buf; b < bcache.buf + NBUF; b++ ) {
     initsleeplock(&b->lock, "buffer");
-    bcache.head.next->prev = b;
-    bcache.head.next = b;
+    b->next = b->prev = &b;
   }
 }
 
@@ -58,15 +61,17 @@ binit(void)
 static struct buf*
 bget(uint dev, uint blockno)
 {
-  struct buf *b;
-
-  acquire(&bcache.lock);
-
+  acquire(&bcache.bcache_tbl[HASH(blockno)].bucket_lck);
+  
+  struct buf *b, *empty = 0; 
   // Is the block already cached?
-  for(b = bcache.head.next; b != &bcache.head; b = b->next){
-    if(b->dev == dev && b->blockno == blockno){
+  for( b = bcache.bcache_tbl[HASH(blockno)].head.next; b != &bcache.bcache_tbl[HASH(blockno)].head; b = b->next ) {
+    if( b->refcnt == 0 ) // Q: why don't add "empty == 0" in the condition?
+      empty = b;         // A: to find the last empty slot passingly.
+                         // maybe better find it in reverse, but... PASSINGly:)
+    if( b->dev == dev && b->blockno == blockno ) {
       b->refcnt++;
-      release(&bcache.lock);
+      release(&bcache.bcache_tbl[HASH(blockno)].bucket_lck);
       acquiresleep(&b->lock);
       return b;
     }
@@ -74,18 +79,60 @@ bget(uint dev, uint blockno)
 
   // Not cached.
   // Recycle the least recently used (LRU) unused buffer.
-  for(b = bcache.head.prev; b != &bcache.head; b = b->prev){
-    if(b->refcnt == 0) {
-      b->dev = dev;
-      b->blockno = blockno;
-      b->valid = 0;
-      b->refcnt = 1;
-      release(&bcache.lock);
-      acquiresleep(&b->lock);
-      return b;
+  // D: corresponding bucket first,
+  if( empty != 0 )
+    goto found;
+  // otherwise stealing blanky buf(refcnt==0) from pool.
+  // must be elsewhere other than the bucket above.
+  // TWO states of different blanky buf:
+  //    - some buckets
+  //    - nowhere but pool
+  for( int i = 0; i < NBUF; i++ ) {
+    if( HASH(bcache.buf[i].blockno) == HASH(blockno) ) // its refcnt must be not 0.
+      continue;
+    
+    if( bcache.buf[i].prev == &bcache.buf[i] && bcache.buf[i].next == &bcache.buf[i] ) {
+      // pool; And its refcnt must be 0.
+      empty = &bcache.buf[i];
+      empty->next = b->next;
+      empty->prev = b;
+      b->next->prev = empty;
+      b->next = empty;
+
+      goto found;
+    } else {
+      // buckets; And must acquire bucket lock first before accessing refcnt field.
+      acquire(&bcache.bcache_tbl[HASH(bcache.buf[i].blockno)].bucket_lck);
+      if( bcache.buf[i].refcnt == 0 ) {
+        bcache.buf[i].dev = dev;
+        bcache.buf[i].blockno = blockno;
+        bcache.buf[i].valid = 0;
+        bcache.buf[i].refcnt = 1;
+        bcache.buf[i].next->prev = bcache.buf[i].prev;
+        bcache.buf[i].prev->next = bcache.buf[i].next;
+        bcache.buf[i].next = b->next;
+        bcache.buf[i].prev = b;
+        b->next->prev = &bcache.buf[i];
+        b->next = &bcache.buf[i];
+
+        release(&bcache.bcache_tbl[HASH(bcache.buf[i].blockno)].bucket_lck);
+        release(&bcache.bcache_tbl[HASH(blockno)].bucket_lck);
+        acquiresleep(&bcache.buf[i].lock);
+        return &bcache.buf[i]; 
+      } 
     }
   }
   panic("bget: no buffers");
+
+found:
+  empty->dev = dev;
+  empty->blockno = blockno;
+  empty->valid = 0;
+  empty->refcnt = 1;
+
+  release(&bcache.bcache_tbl[HASH(blockno)].bucket_lck);
+  acquiresleep(&empty->lock);
+  return empty;
 }
 
 // Return a locked buf with the contents of the indicated block.
@@ -121,33 +168,35 @@ brelse(struct buf *b)
 
   releasesleep(&b->lock);
 
-  acquire(&bcache.lock);
+  int index = HASH(b->blockno);
+  acquire(&bcache.bcache_tbl[index].bucket_lck);
   b->refcnt--;
-  if (b->refcnt == 0) {
+  if( b->refcnt == 0 ) {
     // no one is waiting for it.
     b->next->prev = b->prev;
     b->prev->next = b->next;
-    b->next = bcache.head.next;
-    b->prev = &bcache.head;
-    bcache.head.next->prev = b;
-    bcache.head.next = b;
+    b->next = bcache.bcache_tbl[index].head.next;
+    b->prev = &bcache.bcache_tbl[index].head;
+    bcache.bcache_tbl[index].head.next->prev = b;
+    bcache.bcache_tbl[index].head.next = b;
   }
-  
-  release(&bcache.lock);
+  release(&bcache.bcache_tbl[index].bucket_lck);
 }
 
 void
 bpin(struct buf *b) {
-  acquire(&bcache.lock);
+  int index = HASH(b->blockno);
+  acquire(&bcache.bcache_tbl[index].bucket_lck);
   b->refcnt++;
-  release(&bcache.lock);
+  release(&bcache.bcache_tbl[index].bucket_lck);
 }
 
 void
 bunpin(struct buf *b) {
-  acquire(&bcache.lock);
+  int index = HASH(b->blockno);
+  acquire(&bcache.bcache_tbl[index].bucket_lck);
   b->refcnt--;
-  release(&bcache.lock);
+  release(&bcache.bcache_tbl[index].bucket_lck);
 }
 
 
