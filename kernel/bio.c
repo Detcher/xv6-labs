@@ -88,12 +88,18 @@ bget(uint dev, uint blockno)
   //    - some buckets
   //    - nowhere but pool
   for( int i = 0; i < NBUF; i++ ) {
+    if( !holding(&bcache.bcache_tbl[HASH(bcache.buf[i].blockno)].bucket_lck) ) // when HASH(bcache.buf[i].blockno) == HASH(blockno),
+      acquire(&bcache.bcache_tbl[HASH(bcache.buf[i].blockno)].bucket_lck);     // no need to acquire the same bucket's lock again, otherwise "panic: acquire".
+
     if( HASH(bcache.buf[i].blockno) == HASH(blockno) )
       continue;
+    if( bcache.buf[i].refcnt != 0 ) { // filter.
+      release(&bcache.bcache_tbl[HASH(bcache.buf[i].blockno)].bucket_lck);
+      continue;
+    }
 
-    acquire(&bcache.bcache_tbl[HASH(bcache.buf[i].blockno)].bucket_lck);
     if( bcache.buf[i].prev == &bcache.buf[i] && bcache.buf[i].next == &bcache.buf[i] ) {
-      // pool; And its refcnt must be 0.
+      // pool; And its refcnt must be 0 inherently.
       empty = &bcache.buf[i];
       empty->next = b->next;
       empty->prev = b;
@@ -103,26 +109,23 @@ bget(uint dev, uint blockno)
       release(&bcache.bcache_tbl[HASH(bcache.buf[i].blockno)].bucket_lck);
       goto found;
     } else {
-      // buckets; And must acquire bucket lock first before accessing refcnt field.
-      if( bcache.buf[i].refcnt == 0 ) {
-        int backup = bcache.buf[i].blockno;
-        bcache.buf[i].dev = dev;
-        bcache.buf[i].blockno = blockno;
-        bcache.buf[i].valid = 0;
-        bcache.buf[i].refcnt = 1;
-        bcache.buf[i].next->prev = bcache.buf[i].prev;
-        bcache.buf[i].prev->next = bcache.buf[i].next;
-        bcache.buf[i].next = b->next;
-        bcache.buf[i].prev = b;
-        b->next->prev = &bcache.buf[i];
-        b->next = &bcache.buf[i];
+      // buckets; Notice the 'backup' here and line: 114. 
+      int backup = bcache.buf[i].blockno;
+      bcache.buf[i].dev = dev;
+      bcache.buf[i].blockno = blockno;
+      bcache.buf[i].valid = 0;
+      bcache.buf[i].refcnt = 1;
+      bcache.buf[i].next->prev = bcache.buf[i].prev;
+      bcache.buf[i].prev->next = bcache.buf[i].next;
+      bcache.buf[i].next = b->next;
+      bcache.buf[i].prev = b;
+      b->next->prev = &bcache.buf[i];
+      b->next = &bcache.buf[i];
 
-        release(&bcache.bcache_tbl[HASH(backup)].bucket_lck);
-        release(&bcache.bcache_tbl[HASH(blockno)].bucket_lck);
-        acquiresleep(&bcache.buf[i].lock);
-        return &bcache.buf[i]; 
-      } 
-      release(&bcache.bcache_tbl[HASH(bcache.buf[i].blockno)].bucket_lck);
+      release(&bcache.bcache_tbl[HASH(backup)].bucket_lck);
+      release(&bcache.bcache_tbl[HASH(blockno)].bucket_lck);
+      acquiresleep(&bcache.buf[i].lock);
+      return &bcache.buf[i]; 
     }
   }
   panic("bget: no buffers");
