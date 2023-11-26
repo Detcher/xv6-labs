@@ -51,7 +51,7 @@ binit(void)
 
   for( b = bcache.buf; b < bcache.buf + NBUF; b++ ) {
     initsleeplock(&b->lock, "buffer");
-    b->next = b->prev = &b;
+    b->next = b->prev = b;
   }
 }
 
@@ -88,9 +88,10 @@ bget(uint dev, uint blockno)
   //    - some buckets
   //    - nowhere but pool
   for( int i = 0; i < NBUF; i++ ) {
-    if( HASH(bcache.buf[i].blockno) == HASH(blockno) ) // its refcnt must be not 0.
+    if( HASH(bcache.buf[i].blockno) == HASH(blockno) )
       continue;
-    
+
+    acquire(&bcache.bcache_tbl[HASH(bcache.buf[i].blockno)].bucket_lck);
     if( bcache.buf[i].prev == &bcache.buf[i] && bcache.buf[i].next == &bcache.buf[i] ) {
       // pool; And its refcnt must be 0.
       empty = &bcache.buf[i];
@@ -99,11 +100,12 @@ bget(uint dev, uint blockno)
       b->next->prev = empty;
       b->next = empty;
 
+      release(&bcache.bcache_tbl[HASH(bcache.buf[i].blockno)].bucket_lck);
       goto found;
     } else {
       // buckets; And must acquire bucket lock first before accessing refcnt field.
-      acquire(&bcache.bcache_tbl[HASH(bcache.buf[i].blockno)].bucket_lck);
       if( bcache.buf[i].refcnt == 0 ) {
+        int backup = bcache.buf[i].blockno;
         bcache.buf[i].dev = dev;
         bcache.buf[i].blockno = blockno;
         bcache.buf[i].valid = 0;
@@ -115,11 +117,12 @@ bget(uint dev, uint blockno)
         b->next->prev = &bcache.buf[i];
         b->next = &bcache.buf[i];
 
-        release(&bcache.bcache_tbl[HASH(bcache.buf[i].blockno)].bucket_lck);
+        release(&bcache.bcache_tbl[HASH(backup)].bucket_lck);
         release(&bcache.bcache_tbl[HASH(blockno)].bucket_lck);
         acquiresleep(&bcache.buf[i].lock);
         return &bcache.buf[i]; 
       } 
+      release(&bcache.bcache_tbl[HASH(bcache.buf[i].blockno)].bucket_lck);
     }
   }
   panic("bget: no buffers");
