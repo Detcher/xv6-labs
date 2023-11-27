@@ -304,8 +304,8 @@ create(char *path, short type, short major, short minor)
 uint64
 sys_open(void)
 {
-  char path[MAXPATH];
-  int fd, omode;
+  char path[MAXPATH], target[MAXPATH];
+  int fd, omode, i = 0;
   struct file *f;
   struct inode *ip;
   int n;
@@ -333,6 +333,31 @@ sys_open(void)
       end_op();
       return -1;
     }
+  }
+
+  if( ip->type == T_SYMLINK && !(omode & O_NOFOLLOW) ) {
+    for( i = 1; i < SYMLINK_THRESH; i++ ) {
+      if( readi(ip, 0, (uint64)target, 0, MAXPATH) < MAXPATH ) {
+        iunlockput(ip); 
+        end_op();
+        return -1;
+      }
+      iunlockput(ip);
+      if( (ip = namei(target)) == 0) {
+        end_op();
+        return -1;
+      }
+      ilock(ip);
+
+      if( ip->type != T_SYMLINK )
+        break;
+    }
+  }
+
+  if( i == SYMLINK_THRESH ) {
+    iunlockput(ip);
+    end_op();
+    return -1;
   }
 
   if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
@@ -501,5 +526,36 @@ sys_pipe(void)
     fileclose(wf);
     return -1;
   }
+  return 0;
+}
+
+uint64
+sys_symlink(void)
+{
+  char target[MAXPATH], path[MAXPATH];
+  struct inode *ip;
+
+  if( argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0 )
+    return -1;
+
+  begin_op();
+
+  if( (ip = create(path, T_SYMLINK, 0, 0)) ==  0 ) {
+    // D: no need to do that, panic("iunlock").
+    //    Because of the failure of 'create()', ip == 0,
+    //    and iunlockput(ip) was used right before the 'return'.
+    // iunlockput(ip);
+    end_op();
+    return -1;
+  }
+  
+  if( writei(ip, 0, (uint64)target, 0, MAXPATH) < MAXPATH ) {
+    iunlockput(ip);
+    end_op();
+    return -1;
+  }
+
+  iunlockput(ip);
+  end_op();
   return 0;
 }
