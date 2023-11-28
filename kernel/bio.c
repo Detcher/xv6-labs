@@ -29,6 +29,7 @@
 struct bucket {
   struct buf head;
   struct spinlock bucket_lck;
+  char lck_name[LCK_NAME_LEN];
 };
 
 struct {
@@ -40,11 +41,10 @@ void
 binit(void)
 {
   struct buf *b;
-  char lck_name[NBUCKET];
 
   for( int i = 0; i < NBUCKET; ++i ) {
-    snprintf( lck_name, sizeof(lck_name), "bcache_%d", i );
-    initlock( &bcache.bcache_tbl[i].bucket_lck, lck_name );
+    snprintf( bcache.bcache_tbl[i].lck_name, LCK_NAME_LEN, "bcache_%d", i );
+    initlock( &bcache.bcache_tbl[i].bucket_lck, bcache.bcache_tbl[i].lck_name );
 
     bcache.bcache_tbl[i].head.next = bcache.bcache_tbl[i].head.prev = &bcache.bcache_tbl[i].head;
   }

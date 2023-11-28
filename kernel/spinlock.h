@@ -11,3 +11,4 @@ struct spinlock {
 #endif
 };
 
+#define LCK_NAME_LEN 10 
