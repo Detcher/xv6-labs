@@ -1,59 +1,59 @@
 ***Background***:
 
-- xv6×ö³öÁË×î¼òµ¥µÄassumption£¬procÓĞÒ»¸öuser-level thread£¬ÓĞÒ»¸ökernel-level thread£¬²¢ÇÒ²»ÄÜÍ¬Ê±ÔËĞĞ£»kernel threadÏñÊÇ±»¼¤»î(activated)ÁË£¬ÒòÎªtrap£¬¶ø²»ÊÇÕæµÄÔÚrunning
+- xv6åšå‡ºäº†æœ€ç®€å•çš„assumptionï¼Œprocæœ‰ä¸€ä¸ªuser-level threadï¼Œæœ‰ä¸€ä¸ªkernel-level threadï¼Œå¹¶ä¸”ä¸èƒ½åŒæ—¶è¿è¡Œï¼›kernel threadåƒæ˜¯è¢«æ¿€æ´»(activated)äº†ï¼Œå› ä¸ºtrapï¼Œè€Œä¸æ˜¯çœŸçš„åœ¨running
 
-- lab multithreadingÀïÊµÏÖÁË¶à¶ÔÒ»Ä£ĞÍ£¬µ«ÊÇ. . . . . .
-   - Ò»¸öuser-level thread block£¬½ø³ÌÄÚÆäÓàµÄthreadsÎŞ·¨¼ÌĞøÔËĞĞ
-   - Í¬Ò»½ø³ÌÄÚµÄthreads²»ÄÜrun parallelÔÚ²»Í¬coreÉÏ
+- lab multithreadingé‡Œå®ç°äº†å¤šå¯¹ä¸€æ¨¡å‹ï¼Œä½†æ˜¯. . . . . .
+   - ä¸€ä¸ªuser-level thread blockï¼Œè¿›ç¨‹å†…å…¶ä½™çš„threadsæ— æ³•ç»§ç»­è¿è¡Œ
+   - åŒä¸€è¿›ç¨‹å†…çš„threadsä¸èƒ½run parallelåœ¨ä¸åŒcoreä¸Š
 
 ----
 
 ***Implement 1:1 thread model(a tiny subset of Pthreads)***
 
-- `struct proc proc[NPROC]`ÖĞÃ¿Ò»¸ö³ÉÔ±µÄtg[0]Ò»¶¨·Ö±ğÖ¸ÏòËûÃÇ×Ô¼º£¬¼æÈİxv6µÄassumption£¬¼´Ò»¸öprocÖ»ÓĞÒ»¸öthread(Í¬Ò»procÔÚÄ³¸öÊ±¿ÌÖ»»áÓĞuser/kernel threadÔÚÔËĞĞ£¬»òÕß¶¼²»ÔËĞĞ)
+- `struct proc proc[NPROC]`ä¸­æ¯ä¸€ä¸ªæˆå‘˜çš„tg[0]ä¸€å®šåˆ†åˆ«æŒ‡å‘ä»–ä»¬è‡ªå·±ï¼Œå…¼å®¹xv6çš„assumptionï¼Œå³ä¸€ä¸ªprocåªæœ‰ä¸€ä¸ªthread(åŒä¸€procåœ¨æŸä¸ªæ—¶åˆ»åªä¼šæœ‰user/kernel threadåœ¨è¿è¡Œï¼Œæˆ–è€…éƒ½ä¸è¿è¡Œ)
 
-- Æ«ÏòÓÚLinuxÖĞµÄÉè¼Æ£¬processºÍthread¶¼ÊÇtask_struct,ÁíÒ»ÖÖÉè¼ÆÊÇ°Ñ`PCB`ºÍ`TCB`·Ö¿ª£»Í¨¹ıÊµÏÖthread_create()¿ÉÒÔ¸Ğ¾õµ½£¬´´½¨threadÓëprocess(fork())µÄ¹ı³Ì´ó²î²»²î£¬ÎŞ·Ç¾ÍÊÇ¹²Ïí×ÊÔ´µÄ¶àÓëÉÙ
+- åå‘äºLinuxä¸­çš„è®¾è®¡ï¼Œprocesså’Œthreadéƒ½æ˜¯task_struct,å¦ä¸€ç§è®¾è®¡æ˜¯æŠŠ`PCB`å’Œ`TCB`åˆ†å¼€ï¼›é€šè¿‡å®ç°thread_create()å¯ä»¥æ„Ÿè§‰åˆ°ï¼Œåˆ›å»ºthreadä¸process(fork())çš„è¿‡ç¨‹å¤§å·®ä¸å·®ï¼Œæ— éå°±æ˜¯å…±äº«èµ„æºçš„å¤šä¸å°‘
 
 - trapframe
-  - ÑØÓÃ¾ÉÉè¼Æ(#PR98)£¬¿ÉÒÔ½«trampolineÀïµÄTRAPFRAMEÉèÖÃÎªÆäËûthreadµÄÖµ
-    - allocproc/allocthread¶¼»áÉèÖÃraµ½forkret£¬ÔÙµ½usertrapret£¬ÔÚÕâÀï¿ÉÒÔÉèÖÃa0ÎªÌØ¶¨Ö´ĞĞÁ÷µÄtrapframe£¬Ö®ºóÔÙµ½userret£¬Ä©Î²ÉèÖÃsscratchÎªtrapframe£»ÔÚÕâÖ®ºó£¬ĞÂ´´½¨µÄproc/thread¿ªÊ¼Ö´ĞĞ£¬·¢ÉútrapºóÍ¨¹ısscratch¼´¿Éload½øÕıÈ·µÄtrapframe
-    - ¾ÉÉè¼ÆÀïsscratchµÄÓÃ·¨¿ÉÄÜÃ»±ØÒª£¬µ«ÊÇÔÚÊµÏÖpthreadsÕâÀïÈ·ÊµĞèÒªÕâ¸öÉè¼Æ£¬ĞèÒª`sscratch`µÄ°ïÖú
-  - Ë¼Â·Ò»£¬Ã¿Ò»¸öthreadÒ»Ò³TRAPFRAME(va)£¬Ò»Ò³p->trapframe(pa)£¬ĞèÒªÔÚthread_create()ÀïÖØĞÂmappages()£¬°ÑĞÂ´´½¨threadµÄtrapframeÓ³Éäµ½parent_procµÄÒ³±íÀï
-  - Ë¼Â·¶ş£¬Ö»ĞèÒªÃ¿Ò»¸ö½ø³Ì×î¿ªÊ¼´´½¨µÄÒ»Ò³TRAPFRAME/trapframe¼´¿É£¬ÒòÎªËùÓĞĞÂ´´½¨µÄproc/thread×îºó¶¼»áÈ¥Íùforkret()£¬ÔÙµ½usertrapret()£¬Ä©Î²¿ÉÒÔ°ÑĞÂ´´½¨proc/threadµÄTRAPFRAME(va)´«¸øtrampoline£¬¾Í¿ÉÒÔÉèÖÃÔÚsscratchÀïÁË£¬Ö®ºó·¢Éútrap¶¼×ßÕâ¸öTRAPFRAME£¬trampoline.sÕâ¸öÎÄ¼ş¾Í²»ÓÃÒòÎªÃ¿¸öthreadĞÂ·ÖÅäµÄtrapframe¶ø¸Ä¶¯Ì«¶à´úÂë£¬»ù±¾ÉÏ²»ÓÃ¸Ä£»ÕâÀïÆäÊµÍ¦ÃîµÄ£¬³õÊ¼proc·ÖÅäµÄTRAPFRAME/trapframe×ã×ãÓĞ4KB£¬Ã¿Ò»¸ö×Ö½Ú¶¼ÊÇÒ»Ò»¶ÔÓ¦µÄ£¬µ«ÊÇ¶ÔÓÚÒ»¸öprocÖ»ĞèÒªsizeof(struct proc)¼´¿É£¬ËùÒÔÆäÊµÖ®ºó´´½¨µÄthreadÈÔ¿ÉÒÔ²ÉÓÃÕâ¸ö***intial*** mapping£¬Ö»²»¹ıËûÃÇµÄTRAPFRAMEÔÚÇ°Ò»¸öµÄsizeof(struct trapframe)Ö®ºó£¬ÖÁÓÚp->trapframe£¬Ö±½ÓÔÚÔ­Ê¼µÄbase_trapframe¼ÓÉÏsizeof(struct trapframe)¼´¿É£¡²¢ÇÒÖ®ºófree threadÊ±£¬²»ĞèÒªfreeµôÓ³Éä¹ØÏµ£¬Í¬Ê±Ò²²»ÄÜfreeµôthreadµÄtrapframe(pa)£¬ÒòÎªkfreeĞèÒªpa page-aligned£¬µ«ÊÇ³ıÁËµÚÒ»¸öthread(parent_proc)µÄtfÊÇ¶ÔÆëÍâ£¬ÆäÓàthreads¶¼ÊÇÍùÉÏÔÙ¼Ósizeof(struct trapframe)
+  - æ²¿ç”¨æ—§è®¾è®¡(#PR98)ï¼Œå¯ä»¥å°†trampolineé‡Œçš„TRAPFRAMEè®¾ç½®ä¸ºå…¶ä»–threadçš„å€¼
+    - allocproc/allocthreadéƒ½ä¼šè®¾ç½®raåˆ°forkretï¼Œå†åˆ°usertrapretï¼Œåœ¨è¿™é‡Œå¯ä»¥è®¾ç½®a0ä¸ºç‰¹å®šæ‰§è¡Œæµçš„trapframeï¼Œä¹‹åå†åˆ°userretï¼Œæœ«å°¾è®¾ç½®sscratchä¸ºtrapframeï¼›åœ¨è¿™ä¹‹åï¼Œæ–°åˆ›å»ºçš„proc/threadå¼€å§‹æ‰§è¡Œï¼Œå‘ç”Ÿtrapåé€šè¿‡sscratchå³å¯loadè¿›æ­£ç¡®çš„trapframe
+    - æ—§è®¾è®¡é‡Œsscratchçš„ç”¨æ³•å¯èƒ½æ²¡å¿…è¦ï¼Œä½†æ˜¯åœ¨å®ç°pthreadsè¿™é‡Œç¡®å®éœ€è¦è¿™ä¸ªè®¾è®¡ï¼Œéœ€è¦`sscratch`çš„å¸®åŠ©
+  - æ€è·¯ä¸€ï¼Œæ¯ä¸€ä¸ªthreadä¸€é¡µTRAPFRAME(va)ï¼Œä¸€é¡µp->trapframe(pa)ï¼Œéœ€è¦åœ¨thread_create()é‡Œé‡æ–°mappages()ï¼ŒæŠŠæ–°åˆ›å»ºthreadçš„trapframeæ˜ å°„åˆ°parent_procçš„é¡µè¡¨é‡Œ
+  - æ€è·¯äºŒï¼Œåªéœ€è¦æ¯ä¸€ä¸ªè¿›ç¨‹æœ€å¼€å§‹åˆ›å»ºçš„ä¸€é¡µTRAPFRAME/trapframeå³å¯ï¼Œå› ä¸ºæ‰€æœ‰æ–°åˆ›å»ºçš„proc/threadæœ€åéƒ½ä¼šå»å¾€forkret()ï¼Œå†åˆ°usertrapret()ï¼Œæœ«å°¾å¯ä»¥æŠŠæ–°åˆ›å»ºproc/threadçš„TRAPFRAME(va)ä¼ ç»™trampolineï¼Œå°±å¯ä»¥è®¾ç½®åœ¨sscratché‡Œäº†ï¼Œä¹‹åå‘ç”Ÿtrapéƒ½èµ°è¿™ä¸ªTRAPFRAMEï¼Œtrampoline.sè¿™ä¸ªæ–‡ä»¶å°±ä¸ç”¨å› ä¸ºæ¯ä¸ªthreadæ–°åˆ†é…çš„trapframeè€Œæ”¹åŠ¨å¤ªå¤šä»£ç ï¼ŒåŸºæœ¬ä¸Šä¸ç”¨æ”¹ï¼›è¿™é‡Œå…¶å®æŒºå¦™çš„ï¼Œåˆå§‹procåˆ†é…çš„TRAPFRAME/trapframeè¶³è¶³æœ‰4KBï¼Œæ¯ä¸€ä¸ªå­—èŠ‚éƒ½æ˜¯ä¸€ä¸€å¯¹åº”çš„ï¼Œä½†æ˜¯å¯¹äºä¸€ä¸ªprocåªéœ€è¦sizeof(struct proc)å³å¯ï¼Œæ‰€ä»¥å…¶å®ä¹‹ååˆ›å»ºçš„threadä»å¯ä»¥é‡‡ç”¨è¿™ä¸ª***intial*** mappingï¼Œåªä¸è¿‡ä»–ä»¬çš„TRAPFRAMEåœ¨å‰ä¸€ä¸ªçš„sizeof(struct trapframe)ä¹‹åï¼Œè‡³äºp->trapframeï¼Œç›´æ¥åœ¨åŸå§‹çš„base_trapframeåŠ ä¸Šsizeof(struct trapframe)å³å¯ï¼å¹¶ä¸”ä¹‹åfree threadæ—¶ï¼Œä¸éœ€è¦freeæ‰æ˜ å°„å…³ç³»ï¼ŒåŒæ—¶ä¹Ÿä¸èƒ½freeæ‰threadçš„trapframe(pa)ï¼Œå› ä¸ºkfreeéœ€è¦pa page-alignedï¼Œä½†æ˜¯é™¤äº†ç¬¬ä¸€ä¸ªthread(parent_proc)çš„tfæ˜¯å¯¹é½å¤–ï¼Œå…¶ä½™threadséƒ½æ˜¯å¾€ä¸Šå†åŠ sizeof(struct trapframe)
 
-- ĞèÒª±£Ö¤´«ËÍ½øÀ´µÄuser stack page-aligned£¬²»È»freeµôthread ustackÊ±¿ÉÄÜ»áfreeµôÆäËûÓë¸ÃthreadÎŞ¹ØµÄÄÚÈİ£»µ±È»Ò²¿ÉÒÔÒªÇóÓÃ»§ÊÖ¶¯ÊÍ·ÅµômallocµÄ***heap*** stack
-  - ÔİÊ±²»ÄÜÓÃkfree£¬ÒòÎªÎŞ·¨±£Ö¤ÊÇpage-alignedµÄ£¬ÖîÈçvalloc()/memalign()ÕâĞ©API¿ÉÒÔ·ÖÅäpage-alignµÄÄÚ´æ  
+- éœ€è¦ä¿è¯ä¼ é€è¿›æ¥çš„user stack page-alignedï¼Œä¸ç„¶freeæ‰thread ustackæ—¶å¯èƒ½ä¼šfreeæ‰å…¶ä»–ä¸è¯¥threadæ— å…³çš„å†…å®¹ï¼›å½“ç„¶ä¹Ÿå¯ä»¥è¦æ±‚ç”¨æˆ·æ‰‹åŠ¨é‡Šæ”¾æ‰mallocçš„***heap*** stack
+  - æš‚æ—¶ä¸èƒ½ç”¨kfreeï¼Œå› ä¸ºæ— æ³•ä¿è¯æ˜¯page-alignedçš„ï¼Œè¯¸å¦‚valloc()/memalign()è¿™äº›APIå¯ä»¥åˆ†é…page-alignçš„å†…å­˜  
 
 - TL;DR: all threads share the same parent, despite being recursive or not:)
   - Keyword: recursive thread_create() | fake parent_proc
     - the parent_proc may be a thread that just called thread_create(), and they all share the original parent_proc's pgtbl. So really, NOTICE the relationship between them, who's the real parent and who's the fake
-  - strategy: ÔÚthread_create()Ê±£¬Èç¹ûÊÇthreadµ÷ÓÃ£¬¼´·¢ÉúÁËµİ¹éµ÷ÓÃµÄÇé¿ö£¬½«ĞÂ´´½¨µÄthreadµÄparentÉèÖÃÎª×î³õÊ¼µÄproc£¬ÒòÎª²»¹Üµİ¹éµ÷ÓÃ¶àÉÙ´Î£¬ÄÇĞ©threads¶¼ÊÇÔÚµ±Ç°procÄÚ²¿£¬ËùÒÔ´ËÊ±¾ÍÃ»ÓĞreal parent/fake parentµÄËµ·¨ÁË£¬ËùÓĞÍ¬½ø³ÌÄÚµÄspawned threads(²»¹ÜÊÇµİ¹éµ÷ÓÃ»¹ÊÇË®Æ½Í¬¼¶µ÷ÓÃ)µÄ¸¸Ä¸¶¼ÊÇÍ¬Ò»¸ö
+  - strategy: åœ¨thread_create()æ—¶ï¼Œå¦‚æœæ˜¯threadè°ƒç”¨ï¼Œå³å‘ç”Ÿäº†é€’å½’è°ƒç”¨çš„æƒ…å†µï¼Œå°†æ–°åˆ›å»ºçš„threadçš„parentè®¾ç½®ä¸ºæœ€åˆå§‹çš„procï¼Œå› ä¸ºä¸ç®¡é€’å½’è°ƒç”¨å¤šå°‘æ¬¡ï¼Œé‚£äº›threadséƒ½æ˜¯åœ¨å½“å‰procå†…éƒ¨ï¼Œæ‰€ä»¥æ­¤æ—¶å°±æ²¡æœ‰real parent/fake parentçš„è¯´æ³•äº†ï¼Œæ‰€æœ‰åŒè¿›ç¨‹å†…çš„spawned threads(ä¸ç®¡æ˜¯é€’å½’è°ƒç”¨è¿˜æ˜¯æ°´å¹³åŒçº§è°ƒç”¨)çš„çˆ¶æ¯éƒ½æ˜¯åŒä¸€ä¸ª
 
-- assumption: ÔÚinitproc(init.c)ÖĞ²»»áÓÃthread_create()£¬¼´µÚÒ»¸öprocµÄtgÀï³ıÁËtg[0]Ö¸Ïò×Ô¼ºÍâ£¬ÆäÓàÓÀÔ¶±£³ÖÎª¿Õ£»·ñÔòÔÚreparentÊ±¿ÉÄÜ»áÓĞ³åÍ»
+- assumption: åœ¨initproc(init.c)ä¸­ä¸ä¼šç”¨thread_create()ï¼Œå³ç¬¬ä¸€ä¸ªprocçš„tgé‡Œé™¤äº†tg[0]æŒ‡å‘è‡ªå·±å¤–ï¼Œå…¶ä½™æ°¸è¿œä¿æŒä¸ºç©ºï¼›å¦åˆ™åœ¨reparentæ—¶å¯èƒ½ä¼šæœ‰å†²çª
 
-- pidÃ¿´Î¼Ó1£¬Ã»ÓĞÉÏÏŞ£¬ÓĞÏÂÏŞ£¬Ã»ÓĞ¸´ÓÃpidÒ»Ëµ£»¶øthread_idµÄ·¶Î§ÊÇ0-63£¬Ã¿Ò»¸öid¶¼¿ÉÒÔ¸´ÓÃ
+- pidæ¯æ¬¡åŠ 1ï¼Œæ²¡æœ‰ä¸Šé™ï¼Œæœ‰ä¸‹é™ï¼Œæ²¡æœ‰å¤ç”¨pidä¸€è¯´ï¼›è€Œthread_idçš„èŒƒå›´æ˜¯0-63ï¼Œæ¯ä¸€ä¸ªidéƒ½å¯ä»¥å¤ç”¨
 
-- Ö»ÓĞproc(#thread0)ĞèÒªµ÷ÓÃreparent()£¬½ø³ÌÔÚexitÊ±»áÓĞÁ½Ààchildren
+- åªæœ‰proc(#thread0)éœ€è¦è°ƒç”¨reparent()ï¼Œè¿›ç¨‹åœ¨exitæ—¶ä¼šæœ‰ä¸¤ç±»children
   - threads(thread_create()): set killed
   - proc(fork()): reparent to initproc
-  - ×¢Òâ£¬procĞèÒª´æ»îÖ±ÖÁthread±»killÍê£¬ÒòÎªthreadÀïÃæ¿ÉÄÜÔÚ×öÒ»Ğ©Ãô¸Ğ²Ù×÷
-  - A process, who is created with `fork`, calls the `exit` and the process with its created threads will all terminate // ×¢Òâ£¬Èç¹ûÒ»¸öproc exit£¬ÄÇÃ´ËûµÄËùÓĞthread¶¼ĞèÒªterminate£¬²»ÄÜ½«ËûÃÇreparent¸øinitproc£¡Æ¤Ö®²»¸½£¬Ã«½«ÑÉ´æ£¿threadÔËĞĞµÄ¾ÍÊÇproc textÇøµÄ´úÂë£¬proc¶¼Ã»ÁË£¬thread¿Ï¶¨Ò²Ã»ÓĞ´æÔÚµÄÒâÒå
+  - æ³¨æ„ï¼Œprocéœ€è¦å­˜æ´»ç›´è‡³threadè¢«killå®Œï¼Œå› ä¸ºthreadé‡Œé¢å¯èƒ½åœ¨åšä¸€äº›æ•æ„Ÿæ“ä½œ
+  - A process, who is created with `fork`, calls the `exit` and the process with its created threads will all terminate // æ³¨æ„ï¼Œå¦‚æœä¸€ä¸ªproc exitï¼Œé‚£ä¹ˆä»–çš„æ‰€æœ‰threadéƒ½éœ€è¦terminateï¼Œä¸èƒ½å°†ä»–ä»¬reparentç»™initprocï¼çš®ä¹‹ä¸é™„ï¼Œæ¯›å°†ç„‰å­˜ï¼Ÿthreadè¿è¡Œçš„å°±æ˜¯proc textåŒºçš„ä»£ç ï¼Œprocéƒ½æ²¡äº†ï¼Œthreadè‚¯å®šä¹Ÿæ²¡æœ‰å­˜åœ¨çš„æ„ä¹‰
 
-- growproc()£¬½ø³ÌÄÚÍ¬²½¸üĞÂ
+- growproc()ï¼Œè¿›ç¨‹å†…åŒæ­¥æ›´æ–°
 
 ----
 
 ***TODO:***
 - TLB Shootdown when updating a page table for a multithreaded user process
 
-- ÈçºÎÔÚÄÚºËÖĞÕıÈ·ÊÍ·ÅÓÃ»§´«½øÀ´µÄustack
+- å¦‚ä½•åœ¨å†…æ ¸ä¸­æ­£ç¡®é‡Šæ”¾ç”¨æˆ·ä¼ è¿›æ¥çš„ustack
     - Hint: Additionally, you may need to copy the `stack` address back (to free it) in a similar way as the `copyout` for `xstate`
 
 - user-level synchronization mechanism(locks, condition variables, barriers, etc)
 
-- potential races: two threads on different processors could call `thread_schedule` concurrently, select the same runnable thread, and both run it on different processors.×öºÃ¶àºËÖ®¼ä¹²Ïí×ÊÔ´µÄÍ¬²½Óë»¥³â
+- potential races: two threads on different processors could call `thread_schedule` concurrently, select the same runnable thread, and both run it on different processors.åšå¥½å¤šæ ¸ä¹‹é—´å…±äº«èµ„æºçš„åŒæ­¥ä¸äº’æ–¥
 
-- fd±í£¬Ó¦¸ÃÒª¹²Ïí¶ø²»ÊÇÃ¿¸öthreadÒ»ÕÅ(p->ofile)
+- fdè¡¨ï¼Œåº”è¯¥è¦å…±äº«è€Œä¸æ˜¯æ¯ä¸ªthreadä¸€å¼ (p->ofile)
 
 - N:M thread model
 
@@ -61,31 +61,29 @@
 
 - optionally specify that a lock should be re-entrant
 
-- ***TL;DR: synchronize updates to shared resources(address space) in the same proc*** // if a pthread changes its process¡¯s address space (e.g., maps or unmaps memory), the kernel must arrange that other CPUs that run threads of the same process update their hardware page tables to reflect the change in the address space
+- ***TL;DR: synchronize updates to shared resources(address space) in the same proc*** // if a pthread changes its processâ€™s address space (e.g., maps or unmaps memory), the kernel must arrange that other CPUs that run threads of the same process update their hardware page tables to reflect the change in the address space
 
-- Modify xv6 to use only one context switch when switching from one process¡¯s kernel thread to another, rather than switching through the scheduler thread. The yielding thread will need to select the next thread itself and call swtch. The challenges will be to prevent multiple cores from executing the same thread accidentally; to get the locking right; and to avoid deadlocks
+- Modify xv6 to use only one context switch when switching from one processâ€™s kernel thread to another, rather than switching through the scheduler thread. The yielding thread will need to select the next thread itself and call swtch. The challenges will be to prevent multiple cores from executing the same thread accidentally; to get the locking right; and to avoid deadlocks
 
-- Modify xv6¡¯s scheduler to use the RISC-V WFI (wait for interrupt) instruction when no processes are runnable. Try to ensure that, any time there are runnable processes waiting to run, no cores are pausing in WFI
-  - schedulerÀïµÄfor-loopÈç¹ûÃ»ÓĞrunnableµÄthread¾Í²»ÒªspinÁË
-  - ÒÀ¿¿for-loopÀ´¼ì²âÊÇ·ñÓĞrunnable threadÓĞµãµÍĞ§
+- Modify xv6â€™s scheduler to use the RISC-V WFI (wait for interrupt) instruction when no processes are runnable. Try to ensure that, any time there are runnable processes waiting to run, no cores are pausing in WFI
+  - scheduleré‡Œçš„for-loopå¦‚æœæ²¡æœ‰runnableçš„threadå°±ä¸è¦spinäº†
+  - ä¾é for-loopæ¥æ£€æµ‹æ˜¯å¦æœ‰runnable threadæœ‰ç‚¹ä½æ•ˆ
 
 ----
 
 - Threads separate the notion of a sequential execution stream from the other aspects of traditional processes such aa address spaces and 1/0 descriptors. This separation of concerns yields a significant performance advantage relative to traditional processes
 
-- threadµÄ´æÔÚ½«proc½âñîºÏÁË£¬×Ô´ËÖ®ºó£¬processÖ»¹ÜÀíÏà¹Ø×ÊÔ´£¬thread¸ºÔğÖ´ĞĞ/±»µ÷¶È
+- threadçš„å­˜åœ¨å°†procè§£è€¦åˆäº†ï¼Œè‡ªæ­¤ä¹‹åï¼Œprocessåªç®¡ç†ç›¸å…³èµ„æºï¼Œthreadè´Ÿè´£æ‰§è¡Œ/è¢«è°ƒåº¦
 
-- threads vs. subroutines? llnl HPC¹ØÓÚPthreadsµÄÎÄµµÀï½«threadsÀà±ÈÓÚsubroutines£»µ«ÆäÊµ¶ÔÓÚ×Óº¯ÊıµÄµ÷ÓÃÀ´Ëµ£¬regsµÄ±£´æÓë»Ö¸´¶¼ÓÉcompilerÔÚµ÷ÓÃ·½ºÍ±»µ÷ÓÃ·½µÄÕ»ÉÏ²Ù×÷£¬Òò´ËÒ²ÓĞcaller/callee-savedµÄÇø±ğ£»µ«ÊÇthread switchĞèÒª×Ô¼º²Ù×÷£¬±£´æµ±Ç°threadµÄcontext£¬»Ö¸´Ä¿±êthreadµÄcontext
+- threads vs. subroutines? llnl HPCå…³äºPthreadsçš„æ–‡æ¡£é‡Œå°†threadsç±»æ¯”äºsubroutinesï¼›ä½†å…¶å®å¯¹äºå­å‡½æ•°çš„è°ƒç”¨æ¥è¯´ï¼Œregsçš„ä¿å­˜ä¸æ¢å¤éƒ½ç”±compileråœ¨è°ƒç”¨æ–¹å’Œè¢«è°ƒç”¨æ–¹çš„æ ˆä¸Šæ“ä½œï¼Œå› æ­¤ä¹Ÿæœ‰caller/callee-savedçš„åŒºåˆ«ï¼›ä½†æ˜¯thread switchéœ€è¦è‡ªå·±æ“ä½œï¼Œä¿å­˜å½“å‰threadçš„contextï¼Œæ¢å¤ç›®æ ‡threadçš„context
 
 ----
 
-armÀïÊÇÓĞ×¨ÃÅµÄthread ID regs£¬·½±ãOS¹ÜÀí | x86ÓĞfs/gs reg
+armé‡Œæ˜¯æœ‰ä¸“é—¨çš„thread ID regsï¼Œæ–¹ä¾¿OSç®¡ç† | x86æœ‰fs/gs reg
 
 - https://developer.arm.com/documentation/ddi0388/b/system-control-coprocessor/register-descriptions/c13--software-thread-id-registers
 - https://stackoverflow.com/questions/64856566/what-is-the-purpose-of-thread-id-registers-like-tpidr-el0-tpidr-el1-in-arm
 - https://groups.google.com/a/groups.riscv.org/g/sw-dev/c/cov47bNy5gY
-
-tpµ½µ×ÓĞÊ²Ã´ÓÃ£¿<->RISC-V.md
 
 ----
 
@@ -93,9 +91,9 @@ tpµ½µ×ÓĞÊ²Ã´ÓÃ£¿<->RISC-V.md
 - https://pages.cs.wisc.edu/~cs537-3/Projects/p4b.html p3b(relocated stacks)??
 - https://courses.cs.duke.edu/fall22/compsci310/thread.html more detailed
 - https://users.cs.utah.edu/~aburtsev/238P/2019spring/hw/hw4-threads.html more complete | implication about ustack && synchronization
-- https://www.ietfng.org/nwf/cs/osassign-uthreads.html ÓĞ¹Ø¶àÏß³ÌµÄ£¬ÕÒµ½µÄÊµÑéÄÚÈİ×î¶àµÄÒ»¸ö(uthreads-part)
+- https://www.ietfng.org/nwf/cs/osassign-uthreads.html æœ‰å…³å¤šçº¿ç¨‹çš„ï¼Œæ‰¾åˆ°çš„å®éªŒå†…å®¹æœ€å¤šçš„ä¸€ä¸ª(uthreads-part)
 - https://www.ietfng.org/nwf/cs/osassign-kthreads.html (kthreads-part | have mechanisms for TLB shootdown)
 - https://web.mit.edu/nathanw/www/usenix/freenix-sa/freenix-sa.html another approach to cope with the problem, different from the one-to-one model Linux kernel adopted, this page introduces scheduler activations, known as many-to-many/two-tier model
-- https://www.cse.unsw.edu.au/~cs9242/08/lectures/05-recap.pdf ÓĞÒ»Ğ©¹ØÓÚupcallµÄÏ¸½Ú
-- https://www.cs.uic.edu/~jbell/CourseNotes/OperatingSystems/4_Threads.html ²»Í¬system¶ÔthreadsµÄÖ§³Ö
+- https://www.cse.unsw.edu.au/~cs9242/08/lectures/05-recap.pdf æœ‰ä¸€äº›å…³äºupcallçš„ç»†èŠ‚
+- https://www.cs.uic.edu/~jbell/CourseNotes/OperatingSystems/4_Threads.html ä¸åŒsystemå¯¹threadsçš„æ”¯æŒ
 - https://www.cs.ucr.edu/~heng/teaching/cs179f-winter20/lec1.pdf ppt
