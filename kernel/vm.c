@@ -5,6 +5,10 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "sleeplock.h"
+#include "file.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -179,8 +183,10 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
     if((pte = walk(pagetable, a, 0)) == 0)
       panic("uvmunmap: walk");
+    // originally holding the invariant that all user-mappings are valid,
+    // but now it's no longer true thanks to lazy allocation.
     if((*pte & PTE_V) == 0)
-      panic("uvmunmap: not mapped");
+      continue;
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
     if(do_free){
@@ -436,4 +442,49 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+int
+filecheck(uint64 faulting_va)
+{
+  struct proc *p = myproc();
+
+  for( int i = 0; i < MAXVMA; ++i ) {
+    if( p->vma[i].is_mapped ) {
+      if( faulting_va >= p->vma[i].addr && faulting_va < p->sz )
+        return i; 
+    } 
+  } 
+  return -1;
+}
+
+// Reading one page of the file where faulting_va resides.
+int
+readfile( uint64 file_va, int pool_index ) 
+{ 
+  struct proc *p = myproc();
+
+  uint64 file_pa;
+  if( (file_pa = (uint64)kalloc()) == 0 )
+    return -1;
+
+  pte_t *pte = walk( p->pagetable, file_va, 0 );
+  // *pte = PA2PTE(file_pa) | PTE_FLAGS(*pte);
+  *pte = PA2PTE(file_pa) | (p->vma[pool_index].perm) << 1;
+
+  struct inode *pi = p->vma[pool_index].pf->ip;
+  // pi->ref++;
+  ilock(pi);
+  if( readi(pi, 0, file_pa, 0, PGSIZE) < PGSIZE ) {
+    iunlock(pi);
+    kfree((void *)file_pa);
+    return -1;
+  }
+  iunlock(pi);
+  // iput(pi);
+  
+  // if(mappages(p->pagetable, file_va, PGSIZE, file_pa, (p->vma[pool_index].perm) << 1) != 0)
+  //   panic("readfile: mappages");
+
+  return 0;
 }

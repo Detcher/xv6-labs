@@ -65,3 +65,11 @@
 //   TRAPFRAME (p->trapframe, used by the trampoline)
 //   TRAMPOLINE (the same page as in the kernel)
 #define TRAPFRAME (TRAMPOLINE - PGSIZE)
+
+// #define VMABASE    (TRAPFRAME - PGSIZE) 
+// #define VMA(index) (VMABASE + (index * sizeof(struct VMA)))
+
+// #define FILE_MAX_PGSZ     67 // D: a file's maximum size is 268 blocks,
+//                              //    while BLOCKSIZE is 1KB, 268 blocks => 67 pages.
+// #define FILETOP           TRAPFRAME
+// #define FILEBASE(index)   (FILETOP - (PGSIZE * FILE_MAX_PGSZ * (index + 1)))

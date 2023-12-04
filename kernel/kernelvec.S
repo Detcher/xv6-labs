@@ -22,6 +22,9 @@ kernelvec:
         sd t1, 40(sp)
         sd t2, 48(sp)
         sd s0, 56(sp)
+        # csrw sscratch, s0 # For kernelvec is useless because it's in kernel-space and all of them use the same kernel-stack;
+                            # while in uservec maybe useful, because stack-switching occurs there from user-stack to kernel-stack.
+                            # So, for better gdb/debugging, you can apply it to the usertrap() as well.
         sd s1, 64(sp)
         sd a0, 72(sp)
         sd a1, 80(sp)

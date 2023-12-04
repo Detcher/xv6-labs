@@ -3,8 +3,12 @@
 #include "memlayout.h"
 #include "riscv.h"
 #include "spinlock.h"
+#include "sleeplock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fs.h"
+#include "file.h"
+#include "fcntl.h"
 
 struct cpu cpus[NCPU];
 
@@ -608,6 +612,7 @@ setkilled(struct proc *p)
 {
   acquire(&p->lock);
   p->killed = 1;
+  printf("%s\n", p->name);
   release(&p->lock);
 }
 
@@ -680,4 +685,59 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+// assumption: 
+//   - addr: always be zero
+//   - return value:
+//     - 0xff...fff: mmap fails:(
+//     - other: virtual address at which to map the file
+//   - length: the number of bytes to map, may not be the same as the file's length, but must be PAGE-aligned
+//   - prot(protection): PROT_READ/PROT_WRITE/both
+//   - flags: MAP_SHARED or MAP_PRIVATE
+//   - fd: open fd of the file to map
+//   - offset: 0, starting point in the file at which to map.
+uint64 mmap( uint64 addr, int length, int prot, int flags, int fd, int offset  ) {
+  if( length % PGSIZE != 0 )
+    return 0xffffffffffffffff;
+
+  int i = -1;
+  struct proc *p = myproc();
+  struct file *pf = p->ofile[fd];
+
+  if(pf->writable == 0 && (prot & PROT_WRITE) != 0 && flags == MAP_SHARED)
+    return 0xffffffffffffffff;
+
+  for( i = 0; i < MAXVMA; ++i ) {
+    if( !p->vma[i].is_mapped ) {
+      p->vma[i].length = length;
+      p->vma[i].addr = p->sz;
+      p->sz += length;
+      p->vma[i].perm = prot;
+      p->vma[i].flags = flags;
+      p->vma[i].pf = pf;
+      p->vma[i].is_mapped = 1;
+      filedup(pf);
+      return p->vma[i].addr + offset;
+    }
+  }
+
+  // lazily mapped.
+  // Notice the mappings between PROT_XXX to PTE_X.
+  // if( i == VMA_SZ || mappages(p->pagetable, FILEBASE(i), PGSIZE * FILE_MAX_PGSZ, 0, prot << 1) < 0 ) // no available VMA currently
+    // return 0xffffffffffffffff;
+
+  // no available VMA currently
+  return 0xffffffffffffffff;
+}
+
+int munmap( uint64 addr, int length ) {
+  return -1;
+  // for( int i = 0; i < VMA_SZ; ++i ) {
+  //   // no need to add the condition "vma_pool.vma[i].pf->ref == 0" below.
+  //   if( vma_pool.vma[i].is_mapped != 0 ) {
+  //     uvmunmap(pagetable, FILEBASE(i), FILE_MAX_PGSZ, 0);
+  //     vma_pool.vma[i].is_mapped = 0;
+  //   }
+  // }
 }

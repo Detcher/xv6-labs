@@ -1,3 +1,14 @@
+// D: VMA (aka virtual memory area)
+struct VMA {
+  uint64 addr;      // starting address(va) of a file.
+  uint length;
+  int perm;         // permission of the file itself.
+  int flags;        // file to be mapped is shared or private among processes.
+  struct file *pf;
+  int is_mapped;
+  // ...
+};
+
 // Saved registers for kernel context switches.
 struct context {
   uint64 ra;
@@ -104,4 +115,6 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  struct VMA vma[MAXVMA];
 };

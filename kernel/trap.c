@@ -37,6 +37,7 @@ void
 usertrap(void)
 {
   int which_dev = 0;
+  uint64 pool_index = 0;
 
   if((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
@@ -67,6 +68,13 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  } else if( r_scause() == 12 || r_scause() == 13 || r_scause() == 15 ) {
+    if( (pool_index = filecheck(r_stval())) != -1 ) {
+      if( readfile(PGROUNDDOWN(r_stval()), pool_index) == -1 )
+        setkilled(p);
+    } else {
+      setkilled(p);
+    }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
@@ -145,6 +153,16 @@ kerneltrap()
     panic("kerneltrap: interrupts enabled");
 
   if((which_dev = devintr()) == 0){
+    printf("backtrace:\n");
+
+    uint64 caller = r_fp();
+    uint64 pgstartaddr = PGROUNDDOWN(caller);
+    uint64 pgendaddr = pgstartaddr + 4096; // [pgstartaddr, pgendaddr)
+
+    for( uint64 start = caller; start < pgendaddr; start = *(uint64 *)(start - 16) ) {
+      printf("%p\n", *(uint64 *)(start - 8));
+    }
+
     printf("scause %p\n", scause);
     printf("sepc=%p stval=%p\n", r_sepc(), r_stval());
     panic("kerneltrap");
