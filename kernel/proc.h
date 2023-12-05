@@ -6,6 +6,7 @@ struct VMA {
   int flags;        // file to be mapped is shared or private among processes.
   struct file *pf;
   int is_mapped;
+  int offset;
   // ...
 };
 

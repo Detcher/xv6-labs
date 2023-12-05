@@ -300,6 +300,13 @@ fork(void)
   }
   np->sz = p->sz;
 
+  for( int i = 0; i < MAXVMA; ++i ) {
+    if( p->vma[i].is_mapped ) {
+      memmove( &np->vma[i], &p->vma[i], sizeof(p->vma[i]) );
+      filedup(p->vma[i].pf);
+    }
+  }
+
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
 
@@ -354,6 +361,19 @@ exit(int status)
 
   if(p == initproc)
     panic("init exiting");
+
+  for( int i = 0; i < MAXVMA; ++i ) {
+    if( p->vma[i].is_mapped ) {
+      if( p->vma[i].flags == MAP_SHARED &&
+          p->vma[i].pf->writable != 0   &&
+         (p->vma[i].perm & PROT_WRITE) != 0 ) {
+            filewrite( p->vma[i].pf, p->vma[i].addr, p->vma[i].length );
+      }
+      uvmunmap( p->pagetable, p->vma[i].addr, p->vma[i].length / PGSIZE, 1);
+      fileclose(p->vma[i].pf);
+      p->vma[i].is_mapped = 0;
+    }
+  }
 
   // Close all open files.
   for(int fd = 0; fd < NOFILE; fd++){
@@ -687,7 +707,7 @@ procdump(void)
   }
 }
 
-// assumption: 
+// Assumption: 
 //   - addr: always be zero
 //   - return value:
 //     - 0xff...fff: mmap fails:(
@@ -701,43 +721,66 @@ uint64 mmap( uint64 addr, int length, int prot, int flags, int fd, int offset  )
   if( length % PGSIZE != 0 )
     return 0xffffffffffffffff;
 
-  int i = -1;
   struct proc *p = myproc();
   struct file *pf = p->ofile[fd];
 
-  if(pf->writable == 0 && (prot & PROT_WRITE) != 0 && flags == MAP_SHARED)
+  if( pf->writable == 0 && (prot & PROT_WRITE) != 0 && flags == MAP_SHARED )
     return 0xffffffffffffffff;
 
-  for( i = 0; i < MAXVMA; ++i ) {
+  for( int i = 0; i < MAXVMA; ++i ) {
     if( !p->vma[i].is_mapped ) {
-      p->vma[i].length = length;
+      p->vma[i].pf = pf;
       p->vma[i].addr = p->sz;
       p->sz += length;
+      p->vma[i].length = length;
+      p->vma[i].offset = offset;
       p->vma[i].perm = prot;
       p->vma[i].flags = flags;
-      p->vma[i].pf = pf;
       p->vma[i].is_mapped = 1;
       filedup(pf);
       return p->vma[i].addr + offset;
     }
   }
-
-  // lazily mapped.
-  // Notice the mappings between PROT_XXX to PTE_X.
-  // if( i == VMA_SZ || mappages(p->pagetable, FILEBASE(i), PGSIZE * FILE_MAX_PGSZ, 0, prot << 1) < 0 ) // no available VMA currently
-    // return 0xffffffffffffffff;
-
   // no available VMA currently
   return 0xffffffffffffffff;
 }
 
+// Assumption:
+//   - addr: The address passed in must be a multiple of the page size, so is the length.
 int munmap( uint64 addr, int length ) {
-  return -1;
-  // for( int i = 0; i < VMA_SZ; ++i ) {
-  //   // no need to add the condition "vma_pool.vma[i].pf->ref == 0" below.
-  //   if( vma_pool.vma[i].is_mapped != 0 ) {
-  //     uvmunmap(pagetable, FILEBASE(i), FILE_MAX_PGSZ, 0);
-  //     vma_pool.vma[i].is_mapped = 0;
-  //   }
-  // }
+  if( addr % PGSIZE != 0 || length % PGSIZE != 0 )
+    return -1;
+
+  struct proc *p = myproc();
+  int pool_index = -1;
+
+  for( pool_index = 0; pool_index < MAXVMA; pool_index++ ) {
+    if( p->vma[pool_index].is_mapped &&
+        p->vma[pool_index].addr <= addr &&
+        p->vma[pool_index].addr + p->vma[pool_index].length > addr )
+      break;
+  }
+  if( pool_index == MAXVMA ) // addr doesn't reside in vma_pool. 
+    return -1;
+
+  // Naive and still having lots of details to deal with below.
+  if( walkaddr(p->pagetable, addr) == 0 )
+    goto unmapped;
+
+  if( (p->vma[pool_index].flags == MAP_SHARED) && (p->vma[pool_index].perm & PROT_WRITE) != 0 ) {
+    if( filewrite(p->vma[pool_index].pf, addr, length) == -1 )
+      return -1;
+  }
+  // It's okay to free the physical page directly. (do_free=1)
+  uvmunmap( p->pagetable, addr, length / PGSIZE, 1 );
+
+unmapped:
+  p->vma[pool_index].length -= length;
+  p->vma[pool_index].addr += length;
+
+  if( p->vma[pool_index].length == 0 ) {
+    fileclose(p->vma[pool_index].pf);
+    p->vma[pool_index].is_mapped = 0;
+  }
+  return 0;
 }

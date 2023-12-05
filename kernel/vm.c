@@ -9,6 +9,7 @@
 #include "sleeplock.h"
 #include "file.h"
 #include "proc.h"
+#include "fcntl.h"
 
 /*
  * the kernel's page table.
@@ -320,7 +321,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
+      continue; 
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
     if((mem = kalloc()) == 0)
@@ -450,10 +451,10 @@ filecheck(uint64 faulting_va)
   struct proc *p = myproc();
 
   for( int i = 0; i < MAXVMA; ++i ) {
-    if( p->vma[i].is_mapped ) {
-      if( faulting_va >= p->vma[i].addr && faulting_va < p->sz )
-        return i; 
-    } 
+    if( p->vma[i].is_mapped &&
+        faulting_va >= p->vma[i].addr &&
+        faulting_va < p->vma[i].addr + p->vma[i].length )
+      return i; 
   } 
   return -1;
 }
@@ -462,29 +463,32 @@ filecheck(uint64 faulting_va)
 int
 readfile( uint64 file_va, int pool_index ) 
 { 
+  uint tot;
   struct proc *p = myproc();
 
   uint64 file_pa;
   if( (file_pa = (uint64)kalloc()) == 0 )
     return -1;
+  // mmaptests.c:makefile(): 1.5 pages of 'A' and half a page of *ZEROs*.
+  memset((void *)file_pa, 0, PGSIZE);
 
-  pte_t *pte = walk( p->pagetable, file_va, 0 );
-  // *pte = PA2PTE(file_pa) | PTE_FLAGS(*pte);
-  *pte = PA2PTE(file_pa) | (p->vma[pool_index].perm) << 1;
+  // lazily mapped.
+  // Notice the mappings between PROT_XXX to PTE_X.
+  if( mappages(p->pagetable, file_va, PGSIZE, file_pa, (p->vma[pool_index].perm) << 1 | PTE_U) != 0 ) {
+    kfree((void *)file_pa);
+    return -1;
+  }
 
   struct inode *pi = p->vma[pool_index].pf->ip;
-  // pi->ref++;
   ilock(pi);
-  if( readi(pi, 0, file_pa, 0, PGSIZE) < PGSIZE ) {
+
+  if( (tot = readi(pi, 0, file_pa, p->vma[pool_index].offset + file_va - p->vma[pool_index].addr, PGSIZE)) <= 0 ) {
     iunlock(pi);
     kfree((void *)file_pa);
     return -1;
   }
+
   iunlock(pi);
-  // iput(pi);
-  
-  // if(mappages(p->pagetable, file_va, PGSIZE, file_pa, (p->vma[pool_index].perm) << 1) != 0)
-  //   panic("readfile: mappages");
 
   return 0;
 }
