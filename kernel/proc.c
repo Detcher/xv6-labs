@@ -776,7 +776,8 @@ int munmap( uint64 addr, int length ) {
 
 unmapped:
   p->vma[pool_index].length -= length;
-  p->vma[pool_index].addr += length;
+  if( addr == p->vma[pool_index].addr )
+    p->vma[pool_index].addr += length;
 
   if( p->vma[pool_index].length == 0 ) {
     fileclose(p->vma[pool_index].pf);
